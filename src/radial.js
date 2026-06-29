@@ -299,14 +299,16 @@ export class RadialCalendar {
       }));
     });
 
-    // --- month names: faint, curved inside the ring, behind everything ---
-    this._renderMonths(gMonths, g);
-
-    // --- multi-day events: thin line + a dot at each end, label starts at the dot.
-    //     Lane 0 hugs the perimeter; overlapping events stack inward. Rings are
-    //     feathered close together (capped step) since events are usually staggered. ---
+    // Multi-day ring spacing (shared by events, the month band, and the moon).
+    // Rings are feathered close together (capped step) since events are usually staggered.
     const bandStep = Math.min((g.rangeOut - g.rangeIn) / this.laneCount, g.Ro * 0.048);
     this._bandStep = bandStep;
+
+    // --- month names: faint, curved in the band between the red and yellow rings ---
+    this._renderMonths(gMonths, g, g.rangeOut - bandStep);
+
+    // --- multi-day events: thin line + a dot at each end, label starts at the dot.
+    //     Lane 0 hugs the perimeter; overlapping events stack inward. ---
     const evFs = Math.max(7, g.Ro * 0.0085);
 
     this.model.events.forEach((ev) => {
@@ -401,7 +403,7 @@ export class RadialCalendar {
     });
   }
 
-  _renderMonths(group, g) {
+  _renderMonths(group, g, radius) {
     const half = this.degPerDay / 2;
     const byMonth = new Map();
     this.model.days.forEach((d) => {
@@ -415,9 +417,9 @@ export class RadialCalendar {
       const e1 = this.aDeg(m.last) + half;
       const a0 = Math.min(e0, e1), a1 = Math.max(e0, e1);
       const pid = `month-arc-${i++}`;
-      group.appendChild(el("path", { id: pid, d: arcPath(g.monthText, a0, a1), fill: "none" }));
+      group.appendChild(el("path", { id: pid, d: arcPath(radius, a0, a1), fill: "none" }));
       const label = el("text", {
-        "font-size": Math.max(13, g.Ro * 0.032),
+        "font-size": Math.max(12, g.Ro * 0.026),
         class: "month-name",
       });
       const tp = el("textPath", { href: `#${pid}`, startOffset: "50%", "text-anchor": "middle" });
