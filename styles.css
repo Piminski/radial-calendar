@@ -38,6 +38,7 @@ html, body {
 /* ---------- wheel graphics ---------- */
 .spoke { stroke: #525c6b; stroke-width: 0.8; opacity: 0.45; }
 .spoke.month { stroke: var(--month); stroke-width: 2; opacity: 0.65; }
+.spoke.today { stroke: #ffffff; stroke-width: 0.9; opacity: 0.95; }
 
 .past-seg { fill: #1c222c; }
 .today-seg { fill: var(--accent); opacity: 0.32; }

@@ -33,18 +33,45 @@ const MOON_NAMES = [
   "New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous",
   "Full Moon", "Waning Gibbous", "Third Quarter", "Waning Crescent",
 ];
-const SYNODIC = 29.530588853;                 // mean synodic month (days)
-const REF_NEW_MOON = Date.UTC(2000, 0, 6, 18, 14, 0); // a known new moon
+const SYNODIC = 29.530588853; // mean synodic month (days)
+// Cold Moon — full moon on 24 Dec 2026 at 01:28 UTC (RMG / TheSkyLive).
+const REF_FULL_MOON = Date.UTC(2026, 11, 24, 1, 28, 0);
 
-// SVG path for the lit portion of a moon of radius R at phase p (0 new .. 0.5 full
-// .. 1 new). The terminator is a continuously-scaled ellipse, so the shape morphs
-// smoothly for any fractional p — no discrete frames needed.
+// Fractional phase: 0 = new, 0.25 = first quarter, 0.5 = full, 0.75 = third quarter.
+function moonPhase(p) {
+  let phase = ((p - REF_FULL_MOON) / 86400000 / SYNODIC + 0.5) % 1;
+  if (phase < 0) phase += 1;
+  return phase;
+}
+
+// Illuminated fraction (0..1).
+function moonIllum(p) {
+  return 0.5 * (1 - Math.cos(2 * Math.PI * p));
+}
+
+// SVG path for the lit portion of a moon of radius R at phase p (0 new .. 0.5 full .. 1 new).
 function moonLitPath(R, p) {
-  const limbSweep = p < 0.5 ? 1 : 0;          // lit limb on the right (waxing) / left (waning)
-  const rx = Math.abs(Math.cos(p * 2 * Math.PI)) * R; // terminator half-width
-  const termSweep = p < 0.5 ? (p > 0.25 ? 1 : 0) : (p < 0.75 ? 0 : 1);
-  return `M 0 ${-R} A ${R} ${R} 0 0 ${limbSweep} 0 ${R} `
-       + `A ${rx.toFixed(2)} ${R} 0 0 ${termSweep} 0 ${-R} Z`;
+  const tau = 2 * Math.PI;
+  const c = Math.cos(tau * p);
+  const rx = Math.max(R * Math.abs(c), 0.001);
+  if (p <= 0.5) {
+    // Waxing — lit on the right.
+    const sweep = c > 0 ? 0 : 1;
+    return `M 0 ${-R} A ${R} ${R} 0 0 1 0 ${R} `
+         + `A ${rx.toFixed(3)} ${R} 0 0 ${sweep} 0 ${-R} Z`;
+  }
+  // Waning — lit on the left.
+  const sweep = c < 0 ? 0 : 1;
+  return `M 0 ${-R} A ${R} ${R} 0 0 0 0 ${R} `
+       + `A ${rx.toFixed(3)} ${R} 0 0 ${sweep} 0 ${-R} Z`;
+}
+
+function moonPhaseName(p) {
+  const illum = moonIllum(p);
+  if (illum < 0.05) return MOON_NAMES[0];
+  if (illum > 0.95) return MOON_NAMES[4];
+  const i = Math.floor(p * 8 + 0.5) % 8;
+  return MOON_NAMES[i];
 }
 
 const CFG = {
@@ -250,10 +277,9 @@ export class RadialCalendar {
     if (!this.moonLit || !this._moonR) return;
     const focusFloat = -this.rot / (this.degPerDay * this.dir);
     const t = this._yearStart + focusFloat * 86400000;
-    let p = (((t - REF_NEW_MOON) / 86400000) % SYNODIC) / SYNODIC;
-    if (p < 0) p += 1;
+    const p = moonPhase(t);
     this.moonLit.setAttribute("d", moonLitPath(this._moonR, p));
-    this.moonTitle.textContent = MOON_NAMES[Math.round(p * 8) % 8];
+    this.moonTitle.textContent = moonPhaseName(p);
   }
 
   _render() {
@@ -292,10 +318,13 @@ export class RadialCalendar {
     // --- ticks (at the back): drawn BETWEEN days, dividing the day slots ---
     this.model.days.forEach((d) => {
       const deg = this.aDeg(d.index - 0.5); // boundary before this day
+      const framesToday = d.index === this.todayIndex || d.index === this.todayIndex + 1;
       gTicks.appendChild(el("line", {
         x1: 0, y1: 0, x2: g.date, y2: 0,
         transform: `rotate(${deg})`,
-        class: "spoke" + (d.isMonthStart ? " month" : ""),
+        class: "spoke"
+          + (d.isMonthStart ? " month" : "")
+          + (framesToday ? " today" : ""),
       }));
     });
 
@@ -394,7 +423,7 @@ export class RadialCalendar {
 
       if (isToday) {
         sg.appendChild(el("circle", {
-          cx: g.date + g.Ro * 0.022, cy: 0, r: Math.max(3, g.Ro * 0.0035),
+          cx: g.date + 5 + dateFs * 1.15 + 10, cy: 0, r: Math.max(3, g.Ro * 0.0035),
           class: "today-dot",
         }));
       }
