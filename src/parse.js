@@ -1,11 +1,33 @@
 // CSV parsing + calendar model construction for the radial calendar.
 
+import { FRIEND_BIRTHDAYS } from "./birthdays.js";
+
 const MONTHS = [
   "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
   "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER",
 ];
 
 const TRACKS = ["A", "B", "C", "D", "E"];
+
+// US Federal Reserve bank holidays by monthIndex-date (2026).
+const US_BANK_HOLIDAYS = new Set([
+  "0-1",   // New Year's Day
+  "0-19",  // Martin Luther King Jr. Day
+  "1-16",  // Presidents' Day
+  "4-25",  // Memorial Day
+  "5-19",  // Juneteenth
+  "6-3",   // Independence Day (observed — Jul 4 falls on Saturday)
+  "6-4",   // Independence Day
+  "8-7",   // Labor Day
+  "9-12",  // Columbus Day
+  "10-11", // Veterans Day
+  "10-26", // Thanksgiving
+  "11-25", // Christmas Day
+]);
+
+function isUsBankHoliday(monthIndex, date) {
+  return US_BANK_HOLIDAYS.has(`${monthIndex}-${date}`);
+}
 
 // Minimal RFC-4180-ish CSV parser (handles quoted fields with embedded commas/quotes).
 export function parseCSV(text) {
@@ -82,6 +104,7 @@ export function buildModel(text, year = 2026) {
       dayLetter: (r[cDay] || "").trim(),
       isMonthStart: date === 1 || !prev || prev.monthIndex !== monthIndex,
       holidays: splitHolidays(r[cHoliday]),
+      isUsBankHoliday: isUsBankHoliday(monthIndex, date),
       _raw: r,
     });
   });
@@ -120,6 +143,13 @@ export function buildModel(text, year = 2026) {
       }
     });
     flush();
+  });
+
+  const birthdayByKey = new Map(
+    FRIEND_BIRTHDAYS.map((b) => [`${b.monthIndex}-${b.date}`, b.name]),
+  );
+  days.forEach((d) => {
+    d.birthday = birthdayByKey.get(`${d.monthIndex}-${d.date}`) || null;
   });
 
   // Clean up _raw to keep the model tidy.

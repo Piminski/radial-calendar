@@ -3,9 +3,11 @@
   --bg-2: #11151c;
   --ink: #e8eaed;
   --ink-dim: #9aa3ad;
+  --birthday: #78838f;
   --line: #3a4350;
   --month: #c8d0da;
   --accent: #ff3b30;
+  --bank-holiday: #f6453f;
   --now: #2f80ff;
   --chip: #1c2230;
   font-synthesis: none;
@@ -60,12 +62,15 @@ html, body {
 
 .date-num { fill: var(--ink-dim); font-weight: 500; }
 .date-num.weekend { fill: var(--accent); }
+.date-num.bank-holiday { fill: var(--bank-holiday); }
 .date-num.today { fill: #fff; font-weight: 800; }
 
 .weekday { fill: var(--ink-dim); font-weight: 600; opacity: 0.75; }
 .weekday.weekend { fill: var(--accent); opacity: 1; }
+.weekday.bank-holiday { fill: var(--bank-holiday); opacity: 1; }
 
 .holiday { fill: var(--ink); opacity: 0.9; }
+.holiday.bank-holiday { fill: var(--bank-holiday); opacity: 1; }
 
 .month-name {
   fill: var(--month);
@@ -79,6 +84,21 @@ html, body {
 .range-line { fill: none; opacity: 0.85; }
 .range-dot { stroke: var(--bg); stroke-width: 0.6; }
 .range-label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+.birthday-icon {
+  fill: none;
+  stroke: var(--birthday);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.birthday-label {
+  fill: var(--birthday);
   font-weight: 600;
   letter-spacing: 0.01em;
   pointer-events: none;

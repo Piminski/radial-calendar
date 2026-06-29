@@ -1,6 +1,7 @@
 // Radial calendar renderer + spin interaction (SVG based).
 
 import { ZODIAC_ICONS } from "./zodiac.js";
+import { PRESENT_ICON } from "./birthdays.js";
 
 const SVGNS = "http://www.w3.org/2000/svg";
 
@@ -28,6 +29,9 @@ const TRACK_COLORS = [
   "#4f93c4", // D - blue
   "#9b6bc4", // E - violet
 ];
+
+// Blue track (D) — birthdays sit on this ring, labels reading inward.
+const BLUE_LANE = 3;
 
 const MOON_NAMES = [
   "New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous",
@@ -375,6 +379,35 @@ export class RadialCalendar {
       });
     });
 
+    // --- friend birthdays: grey label + present icon on the blue event ring ---
+    const rcBirth = g.rangeOut - (BLUE_LANE + 0.5) * bandStep - Math.max(12, g.Ro * 0.014);
+    const bdayFs = Math.max(7, g.Ro * 0.0085);
+    const iconSize = Math.max(8, g.Ro * 0.009);
+
+    this.model.days.forEach((d) => {
+      if (!d.birthday) return;
+      const sg = el("g", { transform: `rotate(${this.aDeg(d.index)})` });
+      const labelX = rcBirth - iconSize - 6;
+      const iconG = el("g", { class: "birthday-icon" });
+      iconG.setAttribute(
+        "transform",
+        `translate(${labelX + 2} ${-iconSize / 2}) scale(${iconSize / 24})`,
+      );
+      iconG.innerHTML = PRESENT_ICON;
+      sg.appendChild(iconG);
+      const t = el("text", {
+        x: labelX,
+        y: 0,
+        "font-size": bdayFs,
+        "dominant-baseline": "middle",
+        "text-anchor": "end",
+        class: "birthday-label",
+      });
+      t.textContent = d.birthday;
+      sg.appendChild(t);
+      gArcs.appendChild(sg);
+    });
+
     // --- weekday letter + date numbers (outer edge) + holidays ---
     const dateFs = Math.max(8, g.Ro * 0.0125);
     const holFs = Math.max(6.5, g.Ro * 0.0092);
@@ -383,6 +416,7 @@ export class RadialCalendar {
     this.model.days.forEach((d) => {
       const isToday = d.index === this.todayIndex;
       const isWeekend = d.dayLetter === "S";
+      const isBankHoliday = d.isUsBankHoliday;
       const isPast = d.index < this.todayIndex;
       const sg = el("g", {
         transform: `rotate(${this.aDeg(d.index)})`,
@@ -395,7 +429,7 @@ export class RadialCalendar {
           "font-size": holFs,
           "dominant-baseline": "middle",
           "text-anchor": "end",
-          class: "holiday",
+          class: "holiday" + (isBankHoliday ? " bank-holiday" : ""),
         });
         ht.textContent = d.holidays.join("  ·  ");
         sg.appendChild(ht);
@@ -406,7 +440,8 @@ export class RadialCalendar {
         "font-size": wdFs,
         "dominant-baseline": "middle",
         "text-anchor": "end",
-        class: "weekday" + (isWeekend ? " weekend" : ""),
+        class: "weekday"
+          + (isBankHoliday ? " bank-holiday" : isWeekend ? " weekend" : ""),
       });
       wd.textContent = d.dayLetter;
       sg.appendChild(wd);
@@ -416,7 +451,8 @@ export class RadialCalendar {
         "font-size": dateFs,
         "dominant-baseline": "middle",
         "text-anchor": "start",
-        class: "date-num" + (isToday ? " today" : (isWeekend ? " weekend" : "")),
+        class: "date-num"
+          + (isToday ? " today" : isBankHoliday ? " bank-holiday" : isWeekend ? " weekend" : ""),
       });
       dateText.textContent = d.date;
       sg.appendChild(dateText);
