@@ -3,6 +3,7 @@ export const PRESENT_ICON = `<rect x="3" y="8" width="18" height="4" rx="1" /> <
 
 export const FRIEND_BIRTHDAYS = [
   { name: "Yumiko", monthIndex: 0, date: 4 },
+  { name: "Korty", monthIndex: 0, date: 27 },
   { name: "Susanna", monthIndex: 4, date: 3 },
   { name: "Jacob", monthIndex: 4, date: 4 },
   { name: "Francesco", monthIndex: 4, date: 15 },

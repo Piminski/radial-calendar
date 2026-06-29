@@ -323,11 +323,13 @@ export class RadialCalendar {
     this.model.days.forEach((d) => {
       const deg = this.aDeg(d.index - 0.5); // boundary before this day
       const framesToday = d.index === this.todayIndex || d.index === this.todayIndex + 1;
+      const isYearStart = d.monthIndex === 0 && d.date === 1;
       gTicks.appendChild(el("line", {
         x1: 0, y1: 0, x2: g.date, y2: 0,
         transform: `rotate(${deg})`,
         class: "spoke"
           + (d.isMonthStart ? " month" : "")
+          + (isYearStart ? " year" : "")
           + (framesToday ? " today" : ""),
       }));
     });
