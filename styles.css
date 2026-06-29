@@ -1,0 +1,85 @@
+:root {
+  --bg: #0c0f14;
+  --bg-2: #11151c;
+  --ink: #e8eaed;
+  --ink-dim: #9aa3ad;
+  --line: #3a4350;
+  --month: #c8d0da;
+  --accent: #ff3b30;
+  --now: #2f80ff;
+  --chip: #1c2230;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: radial-gradient(120% 120% at 70% 50%, #141a23 0%, var(--bg) 60%);
+  color: var(--ink);
+  font-family: "Inter", "Helvetica Neue", Arial, system-ui, sans-serif;
+  overflow: hidden;
+}
+
+#app { position: fixed; inset: 0; }
+
+#wheel {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+#wheel.grabbing { cursor: grabbing; }
+
+/* ---------- wheel graphics ---------- */
+.spoke { stroke: #525c6b; stroke-width: 0.8; opacity: 0.45; }
+.spoke.month { stroke: var(--month); stroke-width: 2; opacity: 0.65; }
+
+.past-seg { fill: #1c222c; }
+.today-seg { fill: var(--accent); opacity: 0.32; }
+
+.date-num { fill: var(--ink-dim); font-weight: 500; }
+.date-num.weekend { fill: var(--accent); }
+.date-num.today { fill: #fff; font-weight: 800; }
+
+.weekday { fill: var(--ink-dim); font-weight: 600; opacity: 0.75; }
+.weekday.weekend { fill: var(--accent); opacity: 1; }
+
+.holiday { fill: var(--ink); opacity: 0.9; }
+
+.month-name {
+  fill: var(--month);
+  font-weight: 800;
+  letter-spacing: 0.26em;
+  opacity: 0.16;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.range-line { fill: none; opacity: 0.85; }
+.range-dot { stroke: var(--bg); stroke-width: 0.6; }
+.range-label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+/* ---------- fixed overlay (now line) ---------- */
+.now-line {
+  stroke: var(--now);
+  stroke-width: 1.6;
+  stroke-dasharray: 2 5;
+  opacity: 0.9;
+}
+.now-dot { fill: var(--now); }
+
+/* rotating marker pinned to today's spoke */
+.today-flag {
+  fill: var(--accent);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
