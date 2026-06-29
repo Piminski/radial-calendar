@@ -47,50 +47,50 @@ FEBRUARY,14,S,Valentine's Day,,,X,,X,,X,,X,,
 FEBRUARY,15,S,,,,X,,X,,X,,X,,
 FEBRUARY,16,M,Presidents' Day,,,X,,X,,X,,X,,
 FEBRUARY,17,T,Mardi Gras / Lunar New Year,,,X,,X,Venice Carnival,X,,X,,
-FEBRUARY,18,W,Lent / Ash Wednesday,,,X,,X,,,Rio Carnival,X,,
-FEBRUARY,19,T,,,,X,,X,,,,,,
-FEBRUARY,20,F,,,,X,,X,,,,,,
-FEBRUARY,21,S,,,,X,,X,,,,,,
-FEBRUARY,22,S,SAG Awards / BAFTAs,,Milano Cortina Winter Olympics,X,Berlin Film Festival,X,,,,,,
-FEBRUARY,23,M,,,,,,,,,,,,
-FEBRUARY,24,T,Losar,,Sanremo Music Festival,X,,,,,,,,
-FEBRUARY,25,W,,,,X,,,,,,,,
-FEBRUARY,26,T,,,,X,Frieze LA,X,,,,,,
-FEBRUARY,27,F,,,,X,,X,,,,,,
-FEBRUARY,28,S,,,Sanremo Music Festival,X,,X,,,,,,
-MARCH,1,S,Tokyo Marathon,,,,Frieze LA,X,,,,,,
-MARCH,2,M,,,,,,,,,,,,
-MARCH,3,T,,,,,,,,,,,,
-MARCH,4,W,,,,,,,,,,,,
-MARCH,5,T,,,World Baseball Classic,X,,,,,,,,
-MARCH,6,F,,,,X,Winter Paralympics,X,,,,,,
-MARCH,7,S,,,,X,,X,,,,,,
-MARCH,8,S,Daylight Saving Begins / International Women's Day,,,X,,X,,,,,,
-MARCH,9,M,,,,X,,X,,,,,,
-MARCH,10,T,,,,X,,X,,,,,,
-MARCH,11,W,,,,X,,X,,,,,,
-MARCH,12,T,,,,X,,X,SXSW,X,,,,
-MARCH,13,F,,,,X,,X,,X,,,,
-MARCH,14,S,,,,X,,X,,X,,,,
-MARCH,15,S,Oscars,,,X,Winter Paralympics,X,,X,,,,
-MARCH,16,M,,,,X,,,,X,,,,
-MARCH,17,T,St Patrick's Day,,World Baseball Classic,X,,,,X,,,,
-MARCH,18,W,,,,,,,SXSW,X,,,,
-MARCH,19,T,,,,,,,,,,,,
-MARCH,20,F,Baha'i Naw-Ruz / Vernal Equinox,,Hanami (Cherry Blossoms),X,,,,,,,,
-MARCH,21,S,,,,X,,,,,,,,
-MARCH,22,S,,,,X,,,,,,,,
-MARCH,23,M,,,,X,,,,,,,,
-MARCH,24,T,,,,X,,,,,,,,
-MARCH,25,W,Vaffeldagen,,,X,,,,,,,,
-MARCH,26,T,MLB Opening Day,,,X,,,,,,,,
-MARCH,27,F,,,,X,,,,,,,,
-MARCH,28,S,,,,X,,,,,,,,
-MARCH,29,S,,,,X,,,,,,,,
-MARCH,30,M,,,,X,,,,,,,,
-MARCH,31,T,,,,X,,,,,,,,
-APRIL,1,W,April Fools Day,,,X,Passover,X,,,,,,
-APRIL,2,T,,,,X,,X,,,,,,
+FEBRUARY,18,W,Ash Wednesday,,,X,,X,,,Rio Carnival,X,Lent,X
+FEBRUARY,19,T,,,,X,,X,,,,,,X
+FEBRUARY,20,F,,,,X,,X,,,,,,X
+FEBRUARY,21,S,,,,X,,X,,,,,,X
+FEBRUARY,22,S,SAG Awards / BAFTAs,,Milano Cortina Winter Olympics,X,Berlin Film Festival,X,,,,,,X
+FEBRUARY,23,M,,,,,,,,,,,,X
+FEBRUARY,24,T,,,,,,,,,,,,X
+FEBRUARY,25,W,,,,,,,,,,,,X
+FEBRUARY,26,T,,,,,Frieze LA,X,,,,,,X
+FEBRUARY,27,F,,,,,,X,,,,,,X
+FEBRUARY,28,S,,,,,,X,,,,,,X
+MARCH,1,S,Tokyo Marathon,,,,Frieze LA,X,,,,,,X
+MARCH,2,M,,,,,,,,,,,,X
+MARCH,3,T,,,,,,,,,,,,X
+MARCH,4,W,,,,,,,,,,,,X
+MARCH,5,T,,,World Baseball Classic,X,,,,,,,,X
+MARCH,6,F,,,,X,Winter Paralympics,X,,,,,,X
+MARCH,7,S,,,,X,,X,,,,,,X
+MARCH,8,S,Daylight Saving Begins,,,X,,X,,,,,,X
+MARCH,9,M,,,,X,,X,,,,,,X
+MARCH,10,T,,,,X,,X,,,,,,X
+MARCH,11,W,,,,X,,X,,,,,,X
+MARCH,12,T,,,,X,,X,SXSW,X,,,,X
+MARCH,13,F,,,,X,,X,,X,,,,X
+MARCH,14,S,,,,X,,X,,X,,,,X
+MARCH,15,S,Oscars,,,X,Winter Paralympics,X,,X,,,,X
+MARCH,16,M,,,,X,,,,X,,,,X
+MARCH,17,T,St Patrick's Day,,World Baseball Classic,X,,,,X,,,,X
+MARCH,18,W,,,,,,,SXSW,X,,,,X
+MARCH,19,T,,,,,,,,,,,,X
+MARCH,20,F,Vernal Equinox,,Hanami (Cherry Blossoms),X,,,,,,,,X
+MARCH,21,S,,,,X,,,,,,,,X
+MARCH,22,S,,,,X,,,,,,,,X
+MARCH,23,M,,,,X,,,,,,,,X
+MARCH,24,T,,,,X,,,,,,,,X
+MARCH,25,W,Vaffeldagen,,,X,,,,,,,,X
+MARCH,26,T,MLB Opening Day,,,X,,,,,,,,X
+MARCH,27,F,,,,X,,,,,,,,X
+MARCH,28,S,,,,X,,,,,,,,X
+MARCH,29,S,,,,X,,,,,,,,X
+MARCH,30,M,,,,X,,,,,,,,X
+MARCH,31,T,,,,X,,,,,,,,X
+APRIL,1,W,April Fools Day,,,X,Passover,X,,,,,,X
+APRIL,2,T,,,,X,,X,,,,,Lent,X
 APRIL,3,F,Good Friday,,,X,,X,,,,,,
 APRIL,4,S,,,,X,,X,,,,,,
 APRIL,5,S,Easter Sunday,,Hanami (Cherry Blossoms),X,,X,,,,,,
@@ -130,11 +130,11 @@ MAY,8,F,,,,,,,,,,,,
 MAY,9,S,La Biennale di Venezia Opening,,,,,,,,,,,
 MAY,10,S,Mothers Day,,,,,,,,,,,
 MAY,11,M,,,,,,,,,,,,
-MAY,12,T,,,Eurovision,X,Cannes Film Festival,X,,,,,,
-MAY,13,W,,,,X,,X,,,,,,
-MAY,14,T,Ascension Day,,,X,,X,,,,,,
-MAY,15,F,,,,X,,X,,,,,,
-MAY,16,S,,,Eurovision,X,,X,,,,,,
+MAY,12,T,,,,,Cannes Film Festival,X,,,,,,
+MAY,13,W,,,,,,X,,,,,,
+MAY,14,T,Ascension Day,,,,,X,,,,,,
+MAY,15,F,,,,,,X,,,,,,
+MAY,16,S,,,,,,X,,,,,,
 MAY,17,S,,,,,,X,,,,,,
 MAY,18,M,,,,,,X,,,,,,
 MAY,19,T,,,,,,X,,,,,,
@@ -312,7 +312,7 @@ NOVEMBER,6,F,,,,,,,,,,,,
 NOVEMBER,7,S,,,,,,,,,,,,
 NOVEMBER,8,S,,,,,,,,,,,,
 NOVEMBER,9,M,,,,,,,,,,,,
-NOVEMBER,10,T,Marten Gas,,,,,,,,,,,
+NOVEMBER,10,T,Mårten Gås,,,,,,,,,,,
 NOVEMBER,11,W,Veterans Day / Martinstag,,,,,,,,,,,
 NOVEMBER,12,T,,,,,,,,,,,,
 NOVEMBER,13,F,,,,,,,,,,,,
@@ -364,3 +364,4 @@ DECEMBER,28,M,,,,,,,,,,,,
 DECEMBER,29,T,,,,,,,,,,,,
 DECEMBER,30,W,,,,,,,,,,,,
 DECEMBER,31,T,New Years Eve,,,,,,,,,,,
+
