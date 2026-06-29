@@ -42,6 +42,21 @@ html, body {
 .past-seg { fill: #1c222c; }
 .today-seg { fill: var(--accent); opacity: 0.32; }
 
+/* moon phase indicator on the now-line (procedural) */
+.moon-disc { fill: #2b313b; }
+.moon-lit { fill: #f4f6f8; }
+.moon-ring { fill: none; stroke: #5b6b82; stroke-width: 1; opacity: 0.7; }
+
+/* zodiac (sun sign) indicator next to the moon */
+.zodiac-ring { fill: #2b313b; stroke: #5b6b82; stroke-width: 1; }
+.zodiac-icon {
+  fill: none;
+  stroke: #e8eaed;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .date-num { fill: var(--ink-dim); font-weight: 500; }
 .date-num.weekend { fill: var(--accent); }
 .date-num.today { fill: #fff; font-weight: 800; }
@@ -77,9 +92,5 @@ html, body {
 }
 .now-dot { fill: var(--now); }
 
-/* rotating marker pinned to today's spoke */
-.today-flag {
-  fill: var(--accent);
-  font-weight: 700;
-  letter-spacing: 0.18em;
-}
+/* red dot pinned to today's spoke */
+.today-dot { fill: var(--accent); }

@@ -1,6 +1,24 @@
 // Radial calendar renderer + spin interaction (SVG based).
 
+import { ZODIAC_ICONS } from "./zodiac.js";
+
 const SVGNS = "http://www.w3.org/2000/svg";
+
+// Sun sign for a given month (0-based) and day. Each entry is the sign that
+// runs into this month and the last day it occupies before the next sign begins.
+const ZODIAC_BY_MONTH = [
+  ["capricorn", 19], ["aquarius", 18], ["pisces", 20], ["aries", 19],
+  ["taurus", 20], ["gemini", 20], ["cancer", 22], ["leo", 22],
+  ["virgo", 22], ["libra", 22], ["scorpio", 21], ["sagittarius", 21],
+];
+const ZODIAC_ORDER = [
+  "capricorn", "aquarius", "pisces", "aries", "taurus", "gemini",
+  "cancer", "leo", "virgo", "libra", "scorpio", "sagittarius",
+];
+function zodiacSign(monthIndex, date) {
+  const [name, cut] = ZODIAC_BY_MONTH[monthIndex];
+  return date <= cut ? name : ZODIAC_ORDER[(monthIndex + 1) % 12];
+}
 
 // Palette for the multi-day range tracks (A..E, inner -> outer).
 const TRACK_COLORS = [
@@ -10,6 +28,24 @@ const TRACK_COLORS = [
   "#4f93c4", // D - blue
   "#9b6bc4", // E - violet
 ];
+
+const MOON_NAMES = [
+  "New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous",
+  "Full Moon", "Waning Gibbous", "Third Quarter", "Waning Crescent",
+];
+const SYNODIC = 29.530588853;                 // mean synodic month (days)
+const REF_NEW_MOON = Date.UTC(2000, 0, 6, 18, 14, 0); // a known new moon
+
+// SVG path for the lit portion of a moon of radius R at phase p (0 new .. 0.5 full
+// .. 1 new). The terminator is a continuously-scaled ellipse, so the shape morphs
+// smoothly for any fractional p — no discrete frames needed.
+function moonLitPath(R, p) {
+  const limbSweep = p < 0.5 ? 1 : 0;          // lit limb on the right (waxing) / left (waning)
+  const rx = Math.abs(Math.cos(p * 2 * Math.PI)) * R; // terminator half-width
+  const termSweep = p < 0.5 ? (p > 0.25 ? 1 : 0) : (p < 0.75 ? 0 : 1);
+  return `M 0 ${-R} A ${R} ${R} 0 0 ${limbSweep} 0 ${R} `
+       + `A ${rx.toFixed(2)} ${R} 0 0 ${termSweep} 0 ${-R} Z`;
+}
 
 const CFG = {
   // The outermost ring (the date numbers) lands at this fraction of width;
@@ -62,6 +98,7 @@ export class RadialCalendar {
     this.vel = 0; // deg/ms for momentum
     this.degPerDay = 360 / model.total;
     this.dir = -1; // winding direction: -1 = dates advance clockwise
+    this._yearStart = Date.UTC(model.year, 0, 1, 12, 0, 0);
     this.todayIndex = this._computeTodayIndex();
     this._raf = null;
     this._dragging = false;
@@ -132,6 +169,7 @@ export class RadialCalendar {
     this.H = rect.height || 800;
     this.svg.setAttribute("viewBox", `0 0 ${this.W} ${this.H}`);
     this._render();
+    this._positionMoon();
     this._applyTransform();
   }
 
@@ -150,9 +188,72 @@ export class RadialCalendar {
     this.wheel = el("g", { class: "wheel" });
     this.svg.appendChild(this.wheel);
 
-    // Fixed overlay (does not rotate): the red "today / now" reference line.
+    // Fixed overlay (does not rotate): the blue "now" reference line.
     this.overlay = el("g", { class: "overlay" });
     this.svg.appendChild(this.overlay);
+
+    // Moon phase indicator (drawn procedurally so it animates smoothly as you spin).
+    this.moon = el("g", { class: "moon" });
+    this.moonTitle = el("title");
+    this.moonDisc = el("circle", { cx: 0, cy: 0, r: 1, class: "moon-disc" });
+    this.moonLit = el("path", { d: "", class: "moon-lit" });
+    this.moonRing = el("circle", { cx: 0, cy: 0, r: 1, class: "moon-ring" });
+    this.moon.appendChild(this.moonTitle);
+    this.moon.appendChild(this.moonDisc);
+    this.moon.appendChild(this.moonLit);
+    this.moon.appendChild(this.moonRing);
+    this.svg.appendChild(this.moon);
+
+    // Zodiac (sun sign) indicator in a matching circle next to the moon.
+    this.zodiac = el("g", { class: "zodiac" });
+    this.zTitle = el("title");
+    this.zRing = el("circle", { cx: 0, cy: 0, r: 1, class: "zodiac-ring" });
+    this.zIcon = el("g", { class: "zodiac-icon" });
+    this.zodiac.appendChild(this.zTitle);
+    this.zodiac.appendChild(this.zRing);
+    this.zodiac.appendChild(this.zIcon);
+    this.svg.appendChild(this.zodiac);
+  }
+
+  _positionMoon() {
+    const g = this._geom();
+    this._moonR = 10; // 20px diameter
+    const bandStep = this._bandStep || (g.rangeOut - g.rangeIn) / this.laneCount;
+    const rMoon = g.rangeOut - 2 * bandStep; // between the 2nd (yellow) and 3rd (green) rings
+    this.moon.setAttribute("transform", `translate(${g.cx + rMoon} ${g.cy})`);
+    this.moonDisc.setAttribute("r", this._moonR);
+    this.moonRing.setAttribute("r", this._moonR);
+
+    // Zodiac circle sits just inward (toward centre) of the moon, same size.
+    const zR = 10;
+    const icon = 14; // icon size inside the 20px circle
+    const sc = icon / 24;
+    this.zRing.setAttribute("r", zR);
+    this.zIcon.setAttribute("transform", `translate(${-icon / 2} ${-icon / 2}) scale(${sc})`);
+    this.zodiac.setAttribute("transform", `translate(${g.cx + rMoon - 2 * zR - 4} ${g.cy})`);
+
+    this._updateMoon();
+    this._updateZodiac(this._lastDay);
+  }
+
+  _updateZodiac(day) {
+    if (!day || !this.zIcon) return;
+    const sign = zodiacSign(day.monthIndex, day.date);
+    if (sign !== this._zsign) {
+      this._zsign = sign;
+      this.zIcon.innerHTML = ZODIAC_ICONS[sign];
+      this.zTitle.textContent = sign.charAt(0).toUpperCase() + sign.slice(1);
+    }
+  }
+
+  _updateMoon() {
+    if (!this.moonLit || !this._moonR) return;
+    const focusFloat = -this.rot / (this.degPerDay * this.dir);
+    const t = this._yearStart + focusFloat * 86400000;
+    let p = (((t - REF_NEW_MOON) / 86400000) % SYNODIC) / SYNODIC;
+    if (p < 0) p += 1;
+    this.moonLit.setAttribute("d", moonLitPath(this._moonR, p));
+    this.moonTitle.textContent = MOON_NAMES[Math.round(p * 8) % 8];
   }
 
   _render() {
@@ -202,8 +303,10 @@ export class RadialCalendar {
     this._renderMonths(gMonths, g);
 
     // --- multi-day events: thin line + a dot at each end, label starts at the dot.
-    //     Lane 0 hugs the perimeter; overlapping events stack inward. ---
-    const bandStep = (g.rangeOut - g.rangeIn) / this.laneCount;
+    //     Lane 0 hugs the perimeter; overlapping events stack inward. Rings are
+    //     feathered close together (capped step) since events are usually staggered. ---
+    const bandStep = Math.min((g.rangeOut - g.rangeIn) / this.laneCount, g.Ro * 0.048);
+    this._bandStep = bandStep;
     const evFs = Math.max(7, g.Ro * 0.0085);
 
     this.model.events.forEach((ev) => {
@@ -224,11 +327,14 @@ export class RadialCalendar {
       ends.forEach((idx) => {
         const sg = el("g", { transform: `rotate(${this.aDeg(idx)})` });
         sg.appendChild(el("circle", { cx: rc, cy: 0, r: CFG.dotR, fill: color, class: "range-dot" }));
+        // If this end day also has single-day (holiday) text near the perimeter,
+        // push the event label inward (reading toward the centre) to avoid overlap.
+        const dayHasHoliday = this.model.days[idx] && this.model.days[idx].holidays.length > 0;
         const t = el("text", {
-          x: rc + CFG.dotR + 4, y: 0,
+          x: dayHasHoliday ? (rc - CFG.dotR - 4) : (rc + CFG.dotR + 4), y: 0,
           "font-size": evFs,
           "dominant-baseline": "middle",
-          "text-anchor": "start",
+          "text-anchor": dayHasHoliday ? "end" : "start",
           class: "range-label",
           fill: color,
         });
@@ -285,15 +391,10 @@ export class RadialCalendar {
       sg.appendChild(dateText);
 
       if (isToday) {
-        const tf = el("text", {
-          x: g.date + g.Ro * 0.028, y: 0,
-          "font-size": Math.max(11, g.Ro * 0.014),
-          "dominant-baseline": "middle",
-          "text-anchor": "start",
-          class: "today-flag",
-        });
-        tf.textContent = "● TODAY";
-        sg.appendChild(tf);
+        sg.appendChild(el("circle", {
+          cx: g.date + g.Ro * 0.022, cy: 0, r: Math.max(3, g.Ro * 0.0035),
+          class: "today-dot",
+        }));
       }
 
       gLabels.appendChild(sg);
@@ -330,6 +431,7 @@ export class RadialCalendar {
     const g = this._geom();
     this.wheel.setAttribute("transform", `translate(${g.cx} ${g.cy}) rotate(${this.rot})`);
     this._drawOverlay();
+    this._updateMoon();
     this._emitFocus();
   }
 
@@ -358,6 +460,7 @@ export class RadialCalendar {
     const day = this.model.days[idx];
     if (day && day !== this._lastDay) {
       this._lastDay = day;
+      this._updateZodiac(day);
       this.onFocusChange(day, idx === this.todayIndex);
     }
   }
