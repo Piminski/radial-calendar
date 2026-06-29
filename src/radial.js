@@ -128,7 +128,7 @@ export class RadialCalendar {
     this.rot = 0;
     this.vel = 0; // deg/ms for momentum
     this.degPerDay = 360 / model.total;
-    this.dir = -1; // winding direction: -1 = dates advance clockwise
+    this.dir = 1; // winding direction: 1 = dates advance anticlockwise
     this._yearStart = Date.UTC(model.year, 0, 1, 12, 0, 0);
     this.todayIndex = this._computeTodayIndex();
     this._raf = null;
