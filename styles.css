@@ -193,8 +193,6 @@ html, body {
   font-weight: 600;
   letter-spacing: 0.01em;
   pointer-events: none;
-  dominant-baseline: central;
-  alignment-baseline: central;
 }
 .president-challenger { fill: #9a9a9a; opacity: 0.9; }
 

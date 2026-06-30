@@ -155,8 +155,16 @@ function approxTextWidth(text, fontSize) {
   return text.length * fontSize * 0.52;
 }
 
-function presidentTextWidth(text, fontSize) {
-  return text.length * fontSize * 0.58;
+
+let _presidentMeasureCtx = null;
+function measurePresidentText(text, fontSize) {
+  if (!text) return 0;
+  if (!_presidentMeasureCtx) {
+    const canvas = document.createElement("canvas");
+    _presidentMeasureCtx = canvas.getContext("2d");
+  }
+  _presidentMeasureCtx.font = `600 ${fontSize}px Inter, "Helvetica Neue", Arial, system-ui, sans-serif`;
+  return _presidentMeasureCtx.measureText(text).width;
 }
 
 function dayHasPerimeterLabel(day) {
@@ -833,31 +841,35 @@ export class RadialCalendar {
   _presidentDotGap(fs, insideText = "", outsideText = "") {
     const pad = 3;
     const minFromText = Math.max(
-      presidentTextWidth(insideText, fs),
-      presidentTextWidth(outsideText, fs),
-    ) * 0.12;
+      measurePresidentText(insideText, fs),
+      measurePresidentText(outsideText, fs),
+    ) * 0.08;
     return CFG.dotR + pad + Math.max(fs * 0.65, minFromText);
   }
 
-  _presidentText(x, y, fs, attrs, text, suffix) {
+  _presidentText(x, y, fs, attrs, text) {
     const t = el("text", {
       x,
       y,
       "font-size": fs,
-      "dominant-baseline": "central",
-      "alignment-baseline": "central",
+      "dominant-baseline": "middle",
       ...attrs,
     });
     t.textContent = text;
-    if (suffix) {
-      const span = el("tspan", {
-        class: "president-challenger",
-        fill: "#9a9a9a",
-      });
-      span.textContent = suffix;
-      t.appendChild(span);
-    }
     return t;
+  }
+
+  _renderPresidentOpponentTag(sg, anchorX, y, fs, afterText, opponentTag) {
+    if (!opponentTag) return;
+    const tagGap = Math.max(2, fs * 0.12);
+    const tag = opponentTag.startsWith(" ") ? opponentTag : ` ${opponentTag}`;
+    sg.appendChild(this._presidentText(
+      anchorX + measurePresidentText(afterText, fs) + tagGap,
+      y,
+      fs,
+      { "text-anchor": "start", class: "president-label president-challenger" },
+      tag,
+    ));
   }
 
   _renderIncumbentReelection(group, rc, angle, election, evFs) {
@@ -909,12 +921,13 @@ export class RadialCalendar {
       outgoing.displayName,
     ));
 
+    const inX = rc + gap;
     sg.appendChild(this._presidentText(
-      rc + gap, 0, fs,
+      inX, 0, fs,
       { "text-anchor": "start", class: "president-label", fill: inColor },
       incoming.displayName,
-      opponentTag ? ` ${opponentTag}` : null,
     ));
+    this._renderPresidentOpponentTag(sg, inX, 0, fs, incoming.displayName, opponentTag);
 
     group.appendChild(sg);
   }

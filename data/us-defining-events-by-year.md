@@ -249,7 +249,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 2018 | Parkland shooting and March for Our Lives |
 | 2019 | First Trump impeachment |
 | 2020 | George Floyd |
-| 2021 | January 6 Capitol attack |
+| 2021 | January 6, Afghanistan withdrawal |
 | 2022 | Dobbs decision overturns Roe v. Wade |
 | 2023 | Trump criminally indicted |
 | 2024 | Trump elected to a second, non-consecutive term |
