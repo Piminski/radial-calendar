@@ -155,6 +155,10 @@ function approxTextWidth(text, fontSize) {
   return text.length * fontSize * 0.52;
 }
 
+function presidentTextWidth(text, fontSize) {
+  return text.length * fontSize * 0.58;
+}
+
 function dayHasPerimeterLabel(day) {
   return day && (day.holidays.length > 0 || day.supermoon);
 }
@@ -826,10 +830,42 @@ export class RadialCalendar {
     }
   }
 
+  _presidentDotGap(fs, insideText = "", outsideText = "") {
+    const pad = 3;
+    const minFromText = Math.max(
+      presidentTextWidth(insideText, fs),
+      presidentTextWidth(outsideText, fs),
+    ) * 0.12;
+    return CFG.dotR + pad + Math.max(fs * 0.65, minFromText);
+  }
+
+  _presidentText(x, y, fs, attrs, text, suffix) {
+    const t = el("text", {
+      x,
+      y,
+      "font-size": fs,
+      "dominant-baseline": "central",
+      "alignment-baseline": "central",
+      ...attrs,
+    });
+    t.textContent = text;
+    if (suffix) {
+      const span = el("tspan", {
+        class: "president-challenger",
+        fill: "#9a9a9a",
+      });
+      span.textContent = suffix;
+      t.appendChild(span);
+    }
+    return t;
+  }
+
   _renderIncumbentReelection(group, rc, angle, election, evFs) {
     const sg = el("g", { transform: `rotate(${angle})` });
-    const gap = CFG.dotR + 4;
     const fs = evFs * 0.9;
+    const gap = this._presidentDotGap(
+      fs, election.challengerDisplayName, election.incumbentDisplayName,
+    );
     const incColor = partyColor(election.party);
 
     sg.appendChild(el("circle", {
@@ -838,36 +874,24 @@ export class RadialCalendar {
       class: "president-dot president-reelection-dot",
     }));
 
-    const chLabel = el("text", {
-      x: rc - gap,
-      y: 0,
-      "font-size": fs,
-      "dominant-baseline": "middle",
-      "text-anchor": "end",
-      class: "president-label president-challenger",
-    });
-    chLabel.textContent = election.challengerDisplayName;
-    sg.appendChild(chLabel);
-
-    const incLabel = el("text", {
-      x: rc + gap,
-      y: 0,
-      "font-size": fs,
-      "dominant-baseline": "middle",
-      "text-anchor": "start",
-      class: "president-label",
-      fill: incColor,
-    });
-    incLabel.textContent = election.incumbentDisplayName;
-    sg.appendChild(incLabel);
+    sg.appendChild(this._presidentText(
+      rc - gap, 0, fs,
+      { "text-anchor": "end", class: "president-label president-challenger" },
+      election.challengerDisplayName,
+    ));
+    sg.appendChild(this._presidentText(
+      rc + gap, 0, fs,
+      { "text-anchor": "start", class: "president-label", fill: incColor },
+      election.incumbentDisplayName,
+    ));
 
     group.appendChild(sg);
   }
 
   _renderPresidentTransition(group, rc, angle, outgoing, incoming, evFs, opponentTag) {
     const sg = el("g", { transform: `rotate(${angle})` });
-    const gap = CFG.dotR + 4;
     const fs = evFs * 0.9;
+    const gap = this._presidentDotGap(fs, outgoing.displayName, incoming.displayName);
     const outColor = partyColor(outgoing.party);
     const inColor = partyColor(incoming.party);
 
@@ -879,34 +903,18 @@ export class RadialCalendar {
       class: "president-dot",
     }));
 
-    const outLabel = el("text", {
-      x: rc - gap,
-      y: 0,
-      "font-size": fs,
-      "dominant-baseline": "middle",
-      "text-anchor": "end",
-      class: "president-label",
-      fill: outColor,
-    });
-    outLabel.textContent = outgoing.displayName;
-    sg.appendChild(outLabel);
+    sg.appendChild(this._presidentText(
+      rc - gap, 0, fs,
+      { "text-anchor": "end", class: "president-label", fill: outColor },
+      outgoing.displayName,
+    ));
 
-    const inLabel = el("text", {
-      x: rc + gap,
-      y: 0,
-      "font-size": fs,
-      "dominant-baseline": "middle",
-      "text-anchor": "start",
-      class: "president-label",
-      fill: inColor,
-    });
-    inLabel.appendChild(document.createTextNode(incoming.displayName));
-    if (opponentTag) {
-      const vs = el("tspan", { class: "president-challenger" });
-      vs.textContent = ` ${opponentTag}`;
-      inLabel.appendChild(vs);
-    }
-    sg.appendChild(inLabel);
+    sg.appendChild(this._presidentText(
+      rc + gap, 0, fs,
+      { "text-anchor": "start", class: "president-label", fill: inColor },
+      incoming.displayName,
+      opponentTag ? ` ${opponentTag}` : null,
+    ));
 
     group.appendChild(sg);
   }

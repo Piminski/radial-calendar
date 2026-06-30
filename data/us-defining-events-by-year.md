@@ -36,7 +36,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1805 | Lewis and Clark reach the Pacific |
 | 1806 | Lewis and Clark return |
 | 1807 | Embargo Act |
-| 1808 | Federal ban on importing enslaved people takes effect |
+| 1808 | Federal ban on importing enslaved people|
 | 1809 | Non-Intercourse Act |
 | 1810 | Fletcher v. Peck |
 | 1811 | Battle of Tippecanoe |
@@ -46,7 +46,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1815 | Battle of New Orleans |
 | 1816 | Second Bank of the United States chartered |
 | 1817 | Rush-Bagot Agreement demilitarizes Great Lakes border |
-| 1818 | Convention of 1818 fixes much of the U.S.–Canada border |
+| 1818 | Convention of 1818 on the U.S.–Canada border |
 | 1819 | Panic of 1819 |
 | 1820 | Missouri Compromise |
 | 1821 | Florida becomes U.S. territory |
@@ -178,25 +178,25 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1947 | National Security Act creates modern security state |
 | 1948 | Truman desegregates the armed forces |
 | 1949 | NATO founded |
-| 1950 | McCarthy’s Wheeling speech launches Red Scare |
+| 1950 | McCarthy launches Red Scare |
 | 1951 | 22nd Amendment limits presidents to two terms |
 | 1952 | First hydrogen bomb test |
 | 1953 | Korean Armistice |
 | 1954 | Brown v. Board of Education |
-| 1955 | Montgomery Bus Boycott begins |
+| 1955 | Montgomery Bus Boycott |
 | 1956 | Interstate Highway Act |
 | 1957 | Little Rock Nine |
 | 1958 | NASA created |
 | 1959 | Alaska and Hawaii become states |
-| 1960 | John F. Kennedy elected |
+| 1960 | Kennedy elected |
 | 1961 | Freedom Rides |
 | 1962 | Cuban Missile Crisis |
-| 1963 | John F. Kennedy assassinated |
+| 1963 | Kennedy assassinated |
 | 1964 | Civil Rights Act |
 | 1965 | Voting Rights Act |
 | 1966 | Miranda v. Arizona |
 | 1967 | Detroit rebellion |
-| 1968 | Martin Luther King Jr. assassinated |
+| 1968 | MLK assassinated |
 | 1969 | Moon landing |
 | 1970 | EPA created |
 | 1971 | Pentagon Papers published |
@@ -211,12 +211,12 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1980 | Ronald Reagan elected |
 | 1981 | PATCO strike broken |
 | 1982 | Early-1980s recession peaks |
-| 1983 | Martin Luther King Jr. Day signed into law |
+| 1983 | MLK Day signed into law |
 | 1984 | Apple Macintosh introduced |
 | 1985 | Reagan-Gorbachev Geneva Summit |
 | 1986 | Immigration Reform and Control Act |
 | 1987 | Black Monday stock market crash |
-| 1988 | Civil Liberties Act apologizes for Japanese American internment |
+| 1988 | Civil Liberties Act |
 | 1989 | Berlin Wall falls |
 | 1990 | Americans with Disabilities Act |
 | 1991 | Soviet Union collapses; Cold War ends |
@@ -243,15 +243,15 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 2012 | Sandy Hook shooting |
 | 2013 | Snowden surveillance disclosures |
 | 2014 | Ferguson protests |
-| 2015 | Obergefell v. Hodges legalizes same-sex marriage |
+| 2015 | Same-sex marriage legalized|
 | 2016 | Standing Rock pipeline protests |
-| 2017 | #MeToo movement erupts |
+| 2017 | #MeToo movement |
 | 2018 | Parkland shooting and March for Our Lives |
 | 2019 | First Trump impeachment |
-| 2020 | George Floyd protests spread nationwide |
+| 2020 | George Floyd |
 | 2021 | January 6 Capitol attack |
 | 2022 | Dobbs decision overturns Roe v. Wade |
-| 2023 | Trump becomes first former president criminally indicted |
+| 2023 | Trump criminally indicted |
 | 2024 | Trump elected to a second, non-consecutive term |
-| 2025 | Sweeping tariff and immigration orders |
+| 2025 | DOGE, Sweeping tariff and immigration orders |
 | 2026 | Semiquincentennial / America 250 |
