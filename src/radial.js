@@ -116,7 +116,7 @@ const CFG = {
   historyRangeIn: 0.52,
   historyRangeOut: 0.84,
   historyHeadlineGap: 8, // px between year number and headline (text-anchor end)
-  historyPresidentLane: 5.0, // inside track: rangeIn + this * bandStep
+  historyPresidentLane: 6.0, // inside track: rangeIn + this * bandStep
   historyBandStepCap: 0.030, // tighter lane spacing than annual calendar
 };
 
