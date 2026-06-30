@@ -8,6 +8,7 @@
   --month: #c8d0da;
   --accent: #ff3b30;
   --bank-holiday: #f6453f;
+  --celestial: #dfe6f0;
   --now: #2f80ff;
   --chip: #1c2230;
   font-synthesis: none;
@@ -26,6 +27,107 @@ html, body {
 
 #app { position: fixed; inset: 0; }
 
+.calendar-menu {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.calendar-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #3a4350;
+  border-radius: 50%;
+  background: rgb(17 21 28 / 0.82);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.calendar-menu-btn:hover {
+  border-color: #4a5568;
+  background: rgb(28 34 48 / 0.92);
+}
+
+.calendar-menu-btn:focus-visible {
+  outline: 2px solid var(--now);
+  outline-offset: 2px;
+}
+
+.calendar-menu-icon,
+.calendar-menu-icon::before,
+.calendar-menu-icon::after {
+  display: block;
+  width: 13px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.calendar-menu-icon {
+  position: relative;
+}
+
+.calendar-menu-icon::before,
+.calendar-menu-icon::after {
+  content: "";
+  position: absolute;
+  left: 0;
+}
+
+.calendar-menu-icon::before { top: -4px; }
+.calendar-menu-icon::after { top: 4px; }
+
+.calendar-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid #3a4350;
+  border-radius: 8px;
+  background: rgb(17 21 28 / 0.96);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.35);
+}
+
+.calendar-menu-item {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.calendar-menu-item:hover {
+  background: var(--chip);
+}
+
+.calendar-menu-item[aria-checked="true"] {
+  background: rgb(47 128 255 / 0.16);
+  color: #dbe8ff;
+}
+
+.calendar-menu-item:focus-visible {
+  outline: 2px solid var(--now);
+  outline-offset: -2px;
+}
+
 #wheel {
   position: absolute;
   inset: 0;
@@ -40,13 +142,20 @@ html, body {
 /* ---------- wheel graphics ---------- */
 .spoke { stroke: #525c6b; stroke-width: 0.8; opacity: 0.45; }
 .spoke.month { stroke: var(--month); stroke-width: 2; opacity: 0.65; }
+.spoke.decade { stroke: var(--month); stroke-width: 1; opacity: 0.5; }
+.spoke.century { stroke: #fff; stroke-width: 1.4; opacity: 0.75; }
 .spoke.today { stroke: #ffffff; stroke-width: 0.9; opacity: 0.95; }
 .spoke.year { stroke: #fff; stroke-width: 2; opacity: 0.95; }
+.spoke.seam { stroke: #fff; stroke-width: 2.8; opacity: 0.95; }
 
 .past-seg { fill: #1c222c; }
 .today-seg { fill: var(--accent); opacity: 0.32; }
 
 /* moon phase indicator on the now-line (procedural) */
+.moon-glow {
+  pointer-events: none;
+  opacity: 0; /* default off; radial.js drives glow via inline style */
+}
 .moon-disc { fill: #2b313b; }
 .moon-lit { fill: #f4f6f8; }
 .moon-ring { fill: none; stroke: #5b6b82; stroke-width: 1; opacity: 0.7; }
@@ -72,6 +181,20 @@ html, body {
 
 .holiday { fill: var(--ink); opacity: 0.9; }
 .holiday.bank-holiday { fill: var(--bank-holiday); opacity: 1; }
+.holiday.celestial { fill: var(--celestial); opacity: 0.9; }
+.holiday.celestial.nested { opacity: 0.78; }
+.holiday.history-event { fill: #fff; opacity: 0.92; font-weight: 500; }
+
+.date-num.history-year { font-weight: 600; letter-spacing: -0.02em; }
+
+.president-line { fill: none; opacity: 0.9; }
+.president-dot { pointer-events: none; }
+.president-label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+.president-challenger { fill: #9a9a9a; opacity: 0.9; }
 
 .month-name {
   fill: var(--month);
@@ -89,6 +212,7 @@ html, body {
   letter-spacing: 0.01em;
   pointer-events: none;
 }
+.range-label-radial { letter-spacing: 0.02em; }
 
 .birthday-icon {
   fill: none;

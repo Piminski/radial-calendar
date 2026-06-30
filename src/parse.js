@@ -1,6 +1,7 @@
 // CSV parsing + calendar model construction for the radial calendar.
 
 import { FRIEND_BIRTHDAYS } from "./birthdays.js";
+import { supermoonsForYear, supermoonEventLabel } from "./supermoons.js";
 
 const MONTHS = [
   "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
@@ -152,10 +153,17 @@ export function buildModel(text, year = 2026) {
     d.birthday = birthdayByKey.get(`${d.monthIndex}-${d.date}`) || null;
   });
 
+  supermoonsForYear(year).forEach(({ name, monthIndex, date }) => {
+    const d = days.find((x) => x.monthIndex === monthIndex && x.date === date);
+    if (!d) return;
+    d.supermoon = supermoonEventLabel(name);
+  });
+
   // Clean up _raw to keep the model tidy.
   days.forEach((d) => delete d._raw);
 
   return {
+    kind: "annual",
     year,
     days,
     total,

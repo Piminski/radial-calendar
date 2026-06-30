@@ -3,11 +3,36 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Radial Calendar 2026</title>
+  <title>Radial Calendar — USA History</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <main id="app">
+    <div class="calendar-menu" id="calendar-menu">
+      <button
+        type="button"
+        id="calendar-menu-btn"
+        class="calendar-menu-btn"
+        aria-label="Choose calendar"
+        aria-expanded="false"
+        aria-haspopup="menu"
+        aria-controls="calendar-menu-dropdown"
+      >
+        <span class="calendar-menu-icon" aria-hidden="true"></span>
+      </button>
+      <ul id="calendar-menu-dropdown" class="calendar-menu-dropdown" role="menu" hidden>
+        <li role="none">
+          <button type="button" role="menuitemradio" class="calendar-menu-item" data-value="annual" aria-checked="false">
+            2026
+          </button>
+        </li>
+        <li role="none">
+          <button type="button" role="menuitemradio" class="calendar-menu-item" data-value="history" aria-checked="true">
+            USA History (1776–2026)
+          </button>
+        </li>
+      </ul>
+    </div>
     <svg id="wheel" class="grab" xmlns="http://www.w3.org/2000/svg"></svg>
   </main>
 

@@ -2,6 +2,9 @@
 
 import { ZODIAC_ICONS } from "./zodiac.js";
 import { PRESENT_ICON } from "./birthdays.js";
+import { REF_FULL_MOON_2026, supermoonPeaksForYear } from "./supermoons.js";
+import { CELESTIAL_LABEL_SCALE, isCelestialLabel } from "./celestial.js";
+import { partyColor } from "./usaHistoryData.js";
 
 const SVGNS = "http://www.w3.org/2000/svg";
 
@@ -38,8 +41,25 @@ const MOON_NAMES = [
   "Full Moon", "Waning Gibbous", "Third Quarter", "Waning Crescent",
 ];
 const SYNODIC = 29.530588853; // mean synodic month (days)
-// Cold Moon — full moon on 24 Dec 2026 at 01:28 UTC (RMG / TheSkyLive).
-const REF_FULL_MOON = Date.UTC(2026, 11, 24, 1, 28, 0);
+const REF_FULL_MOON = REF_FULL_MOON_2026;
+const SUPERMOON_WINDOW_MS = 36 * 3600000; // ±36 h around peak
+
+// 0..1 glow strength when near a supermoon peak and the disc is nearly full.
+function supermoonStrength(t, phase, year) {
+  const peaks = supermoonPeaksForYear(year);
+  if (!peaks.length) return 0;
+  const illum = moonIllum(phase);
+  if (illum < 0.88) return 0;
+  const phaseFactor = Math.min(1, (illum - 0.88) / 0.1);
+  let best = 0;
+  for (const peak of peaks) {
+    const dt = Math.abs(t - peak);
+    if (dt > SUPERMOON_WINDOW_MS) continue;
+    const timeFactor = 1 - dt / SUPERMOON_WINDOW_MS;
+    best = Math.max(best, timeFactor * phaseFactor);
+  }
+  return best;
+}
 
 // Fractional phase: 0 = new, 0.25 = first quarter, 0.5 = full, 0.75 = third quarter.
 function moonPhase(p) {
@@ -92,6 +112,12 @@ const CFG = {
   // Pixel offsets:
   holidayGap: 18,       // gap inside the date numbers where event text ends
   dotR: 3.0,
+  // USA history: rings sit inward of headline text (8px gap from year labels).
+  historyRangeIn: 0.52,
+  historyRangeOut: 0.84,
+  historyHeadlineGap: 8, // px between year number and headline (text-anchor end)
+  historyPresidentLane: 5.0, // inside track: rangeIn + this * bandStep
+  historyBandStepCap: 0.030, // tighter lane spacing than annual calendar
 };
 
 function el(name, attrs) {
@@ -105,11 +131,16 @@ function polar(r, deg) {
   return [r * Math.cos(a), r * Math.sin(a)];
 }
 
-function arcPath(r, a0, a1) {
+function arcPath(r, a0, a1, sweep = 1) {
   const [x0, y0] = polar(r, a0);
   const [x1, y1] = polar(r, a1);
   const large = Math.abs(a1 - a0) % 360 > 180 ? 1 : 0;
-  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${large} ${sweep} ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+
+// Arc path for textPath: always increasing screen angle so labels stay upright (top outward).
+function uprightArcPath(r, a0, a1) {
+  return arcPath(r, Math.min(a0, a1), Math.max(a0, a1), 1);
 }
 
 // Filled wedge (pie slice) from the center out to radius r, spanning a0->a1.
@@ -118,6 +149,29 @@ function wedgePath(r, a0, a1) {
   const [x1, y1] = polar(r, a1);
   const large = Math.abs(a1 - a0) % 360 > 180 ? 1 : 0;
   return `M 0 0 L ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z`;
+}
+
+function approxTextWidth(text, fontSize) {
+  return text.length * fontSize * 0.52;
+}
+
+function dayHasPerimeterLabel(day) {
+  return day && (day.holidays.length > 0 || day.supermoon);
+}
+
+function perimeterLabelItems(day, holFs) {
+  const celestialFs = holFs * CELESTIAL_LABEL_SCALE;
+  const items = [];
+  day.holidays.forEach((label) => {
+    const celestial = isCelestialLabel(label);
+    items.push({ text: label, fs: celestial ? celestialFs : holFs, celestial });
+  });
+  if (day.supermoon) {
+    items.push({ text: day.supermoon, fs: celestialFs, celestial: true, supermoon: true });
+  }
+  const outer = items.filter((item) => !item.celestial);
+  const inner = items.filter((item) => item.celestial);
+  return [...outer, ...inner];
 }
 
 export class RadialCalendar {
@@ -141,8 +195,121 @@ export class RadialCalendar {
     this._attachEvents();
   }
 
+  get isHistory() { return this.model.kind === "history"; }
+
   // Angle (deg) of a day index, honouring the winding direction.
   aDeg(i) { return i * this.degPerDay * this.dir; }
+
+  _eventSpansDecades(ev) {
+    if (!this.isHistory) return false;
+    const y0 = this.model.startYear + ev.startIndex;
+    const y1 = this.model.startYear + ev.endIndex;
+    if (y1 - y0 < 10) return false;
+    return Math.floor(y0 / 10) !== Math.floor(y1 / 10);
+  }
+
+  _renderRangeEventLabel(sg, rc, inside, label, color, fs) {
+    const t = el("text", {
+      x: inside ? (rc - CFG.dotR - 4) : (rc + CFG.dotR + 4), y: 0,
+      "font-size": fs,
+      "dominant-baseline": "middle",
+      "text-anchor": inside ? "end" : "start",
+      class: "range-label",
+      fill: color,
+    });
+    t.textContent = label;
+    sg.appendChild(t);
+  }
+
+  _labelArcHalfDeg(label, fs, rc) {
+    const pad = 4;
+    return ((approxTextWidth(label, fs) + pad) / rc) * (180 / Math.PI);
+  }
+
+  _renderMultidecadePathLabel(group, rc, a0, a1, text, color, fs, role) {
+    const pathId = `range-lbl-${this._pathId++}`;
+    group.appendChild(el("path", {
+      id: pathId, d: uprightArcPath(rc, a0, a1), fill: "none", stroke: "none",
+    }));
+    const isStart = role === "start";
+    const label = el("text", {
+      "font-size": fs,
+      class: "range-label range-label-radial",
+      fill: color,
+    });
+    const tp = el("textPath", {
+      href: `#${pathId}`,
+      startOffset: isStart ? "0%" : "100%",
+      "text-anchor": isStart ? "start" : "end",
+      dy: `-${Math.max(3, fs * 0.35)}`,
+    });
+    tp.textContent = text;
+    label.appendChild(tp);
+    group.appendChild(label);
+  }
+
+  _renderMultidecadeEvent(group, ev, rc, color, fs, g) {
+    const aS = this.aDeg(ev.startIndex);
+    const aE = this.aDeg(ev.endIndex);
+    const aLo = Math.min(aS, aE);
+    const aHi = Math.max(aS, aE);
+
+    group.appendChild(el("path", {
+      d: uprightArcPath(rc, aS, aE), fill: "none", stroke: color,
+      "stroke-width": Math.max(1, g.Ro * 0.0013), class: "range-line",
+    }));
+
+    for (const angle of [aS, aE]) {
+      const [x, y] = polar(rc, angle);
+      group.appendChild(el("circle", {
+        cx: x, cy: y, r: CFG.dotR, fill: color, class: "range-dot",
+      }));
+    }
+
+    const rLabel = rc + CFG.dotR + 3;
+    const halfSpan = this._labelArcHalfDeg(ev.label, fs, rLabel);
+    this._renderMultidecadePathLabel(
+      group, rLabel, aLo, aLo + halfSpan * 2, ev.label, color, fs, "start",
+    );
+    this._renderMultidecadePathLabel(
+      group, rLabel, aHi - halfSpan * 2, aHi, ev.label, color, fs, "end",
+    );
+  }
+
+  // When several events start or end on the same year, alternate label side to reduce overlap.
+  _buildEventLabelSides() {
+    const byIndex = new Map();
+    const add = (idx, ev, role) => {
+      if (!byIndex.has(idx)) byIndex.set(idx, []);
+      byIndex.get(idx).push({ ev, role });
+    };
+    this.model.events.forEach((ev) => {
+      if (ev.endIndex > ev.startIndex) {
+        add(ev.startIndex, ev, "start");
+        add(ev.endIndex, ev, "end");
+      } else {
+        add(ev.startIndex, ev, "only");
+      }
+    });
+    const sides = new Map();
+    byIndex.forEach((list, idx) => {
+      list.sort((a, b) => a.ev.lane - b.ev.lane);
+      const hasHeadline = dayHasPerimeterLabel(this.model.days[idx]);
+      list.forEach((item, i) => {
+        const key = `${item.ev.lane}:${item.ev.startIndex}:${item.ev.endIndex}:${item.role}`;
+        let side;
+        if (list.length > 1) {
+          side = i % 2 === 0 ? "inside" : "outside";
+        } else if (hasHeadline) {
+          side = "inside";
+        } else {
+          side = "outside";
+        }
+        sides.set(key, side);
+      });
+    });
+    return sides;
+  }
 
   // Interval packing: lane 0 is the perimeter. Shorter events are placed first so
   // they claim the outer lanes; longer events get pushed inward whenever they
@@ -170,6 +337,11 @@ export class RadialCalendar {
 
   _computeTodayIndex() {
     const now = new Date();
+    if (this.isHistory) {
+      const y = Math.min(Math.max(now.getFullYear(), this.model.startYear), this.model.endYear);
+      const found = this.model.days.find((x) => x.year === y);
+      return found ? found.index : this.model.total - 1;
+    }
     if (now.getFullYear() === this.model.year) {
       const mi = now.getMonth();
       const d = now.getDate();
@@ -183,14 +355,16 @@ export class RadialCalendar {
   _geom() {
     const W = this.W, H = this.H;
     const Ro = H * CFG.radiusFrac;
+    const h = this.isHistory;
     return {
       W, H, Ro,
       cx: W * CFG.outerXFrac - Ro * CFG.rDate,
       cy: H * CFG.centerYFrac,
       monthText: Ro * CFG.rMonthText,
-      rangeIn: Ro * CFG.rRangeIn,
-      rangeOut: Ro * CFG.rRangeOut,
+      rangeIn: Ro * (h ? CFG.historyRangeIn : CFG.rRangeIn),
+      rangeOut: Ro * (h ? CFG.historyRangeOut : CFG.rRangeOut),
       date: Ro * CFG.rDate,
+      headlineGap: h ? CFG.historyHeadlineGap : CFG.holidayGap,
     };
   }
 
@@ -214,6 +388,23 @@ export class RadialCalendar {
     grad.appendChild(el("stop", { offset: "0", "stop-color": "#11151c", "stop-opacity": "0" }));
     grad.appendChild(el("stop", { offset: "1", "stop-color": "#11151c", "stop-opacity": "0" }));
     defs.appendChild(grad);
+
+    const moonGlowGrad = el("radialGradient", {
+      id: "moon-super-glow", cx: "0.5", cy: "0.5", r: "0.5", gradientUnits: "objectBoundingBox",
+    });
+    moonGlowGrad.appendChild(el("stop", { offset: "0%", "stop-color": "#fff", "stop-opacity": "1" }));
+    moonGlowGrad.appendChild(el("stop", { offset: "32%", "stop-color": "#f4f6f8", "stop-opacity": "0.52" }));
+    moonGlowGrad.appendChild(el("stop", { offset: "68%", "stop-color": "#dfe6f0", "stop-opacity": "0.18" }));
+    moonGlowGrad.appendChild(el("stop", { offset: "100%", "stop-color": "#fff", "stop-opacity": "0" }));
+    defs.appendChild(moonGlowGrad);
+
+    const moonGlowFilter = el("filter", {
+      id: "moon-glow-blur", x: "-120%", y: "-120%", width: "340%", height: "340%",
+      filterUnits: "objectBoundingBox",
+    });
+    this.moonGlowBlur = el("feGaussianBlur", { in: "SourceGraphic", stdDeviation: "0" });
+    moonGlowFilter.appendChild(this.moonGlowBlur);
+    defs.appendChild(moonGlowFilter);
     this.svg.appendChild(defs);
 
     this.wheel = el("g", { class: "wheel" });
@@ -226,10 +417,15 @@ export class RadialCalendar {
     // Moon phase indicator (drawn procedurally so it animates smoothly as you spin).
     this.moon = el("g", { class: "moon" });
     this.moonTitle = el("title");
+    this.moonGlow = el("circle", {
+      cx: 0, cy: 0, r: 1, class: "moon-glow",
+      fill: "url(#moon-super-glow)", filter: "url(#moon-glow-blur)",
+    });
     this.moonDisc = el("circle", { cx: 0, cy: 0, r: 1, class: "moon-disc" });
     this.moonLit = el("path", { d: "", class: "moon-lit" });
     this.moonRing = el("circle", { cx: 0, cy: 0, r: 1, class: "moon-ring" });
     this.moon.appendChild(this.moonTitle);
+    this.moon.appendChild(this.moonGlow);
     this.moon.appendChild(this.moonDisc);
     this.moon.appendChild(this.moonLit);
     this.moon.appendChild(this.moonRing);
@@ -244,9 +440,15 @@ export class RadialCalendar {
     this.zodiac.appendChild(this.zRing);
     this.zodiac.appendChild(this.zIcon);
     this.svg.appendChild(this.zodiac);
+
+    if (this.isHistory) {
+      this.moon.style.display = "none";
+      this.zodiac.style.display = "none";
+    }
   }
 
   _positionMoon() {
+    if (this.isHistory) return;
     const g = this._geom();
     this._moonR = 10; // 20px diameter
     const bandStep = this._bandStep || (g.rangeOut - g.rangeIn) / this.laneCount;
@@ -268,7 +470,7 @@ export class RadialCalendar {
   }
 
   _updateZodiac(day) {
-    if (!day || !this.zIcon) return;
+    if (this.isHistory || !day || !this.zIcon) return;
     const sign = zodiacSign(day.monthIndex, day.date);
     if (sign !== this._zsign) {
       this._zsign = sign;
@@ -278,17 +480,29 @@ export class RadialCalendar {
   }
 
   _updateMoon() {
-    if (!this.moonLit || !this._moonR) return;
+    if (this.isHistory || !this.moonLit || !this._moonR) return;
     const focusFloat = -this.rot / (this.degPerDay * this.dir);
     const t = this._yearStart + focusFloat * 86400000;
     const p = moonPhase(t);
     this.moonLit.setAttribute("d", moonLitPath(this._moonR, p));
-    this.moonTitle.textContent = moonPhaseName(p);
+    const glow = supermoonStrength(t, p, this.model.year);
+    const R = this._moonR;
+    if (glow > 0) {
+      this.moonGlow.setAttribute("r", (R * (1.55 + glow * 1.15)).toFixed(2));
+      this.moonGlow.style.opacity = (0.62 + glow * 0.38).toFixed(3);
+      this.moonGlowBlur.setAttribute("stdDeviation", (3.5 + glow * 5.5).toFixed(1));
+    } else {
+      this.moonGlow.style.opacity = "0";
+      this.moonGlowBlur.setAttribute("stdDeviation", "0");
+    }
+    const name = moonPhaseName(p);
+    this.moonTitle.textContent = glow > 0.35 ? `${name} · Supermoon` : name;
   }
 
   _render() {
     const g = this._geom();
     this.wheel.innerHTML = "";
+    this._pathId = 0;
 
     // Render order = z-order. The today segment + ticks sit at the very back.
     const gTicks = el("g", { class: "ticks" });
@@ -323,28 +537,43 @@ export class RadialCalendar {
     this.model.days.forEach((d) => {
       const deg = this.aDeg(d.index - 0.5); // boundary before this day
       const framesToday = d.index === this.todayIndex || d.index === this.todayIndex + 1;
-      const isYearStart = d.monthIndex === 0 && d.date === 1;
+      const isYearStart = this.isHistory
+        ? d.isCenturyStart
+        : d.monthIndex === 0 && d.date === 1;
       gTicks.appendChild(el("line", {
         x1: 0, y1: 0, x2: g.date, y2: 0,
         transform: `rotate(${deg})`,
         class: "spoke"
-          + (d.isMonthStart ? " month" : "")
-          + (isYearStart ? " year" : "")
+          + (d.isMonthStart ? (this.isHistory ? " decade" : " month") : "")
+          + (isYearStart ? (this.isHistory ? " century" : " year") : "")
           + (framesToday ? " today" : ""),
       }));
     });
 
+    // History calendar seam: thick marker between last year (2026) and first (1776).
+    if (this.isHistory) {
+      const seamDeg = this.aDeg(this.model.total - 0.5);
+      gTicks.appendChild(el("line", {
+        x1: 0, y1: 0, x2: g.date, y2: 0,
+        transform: `rotate(${seamDeg})`,
+        class: "spoke seam",
+      }));
+    }
+
     // Multi-day ring spacing (shared by events, the month band, and the moon).
-    // Rings are feathered close together (capped step) since events are usually staggered.
-    const bandStep = Math.min((g.rangeOut - g.rangeIn) / this.laneCount, g.Ro * 0.048);
+    // History packs lanes tighter; annual calendar uses a wider cap.
+    const stepCap = this.isHistory ? g.Ro * CFG.historyBandStepCap : g.Ro * 0.048;
+    const bandStep = Math.min((g.rangeOut - g.rangeIn) / this.laneCount, stepCap);
     this._bandStep = bandStep;
-
-    // --- month names: faint, curved in the band between the red and yellow rings ---
-    this._renderMonths(gMonths, g, g.rangeOut - bandStep);
-
-    // --- multi-day events: thin line + a dot at each end, label starts at the dot.
-    //     Lane 0 hugs the perimeter; overlapping events stack inward. ---
     const evFs = Math.max(7, g.Ro * 0.0085);
+
+    // --- decade/month names: faint, curved in the band between the rings ---
+    if (this.isHistory) this._renderDecades(gMonths, g, g.rangeIn + bandStep * 0.35);
+    else this._renderMonths(gMonths, g, g.rangeOut - bandStep);
+
+    // --- multi-day / multiyear events: thin line + a dot at each end, label starts at the dot.
+    //     Lane 0 hugs the perimeter; overlapping events stack inward. ---
+    const eventLabelSides = this._buildEventLabelSides();
 
     this.model.events.forEach((ev) => {
       const rc = g.rangeOut - (ev.lane + 0.5) * bandStep;
@@ -352,9 +581,14 @@ export class RadialCalendar {
       const aS = this.aDeg(ev.startIndex);
       const aE = this.aDeg(ev.endIndex);
 
+      if (ev.endIndex > ev.startIndex && this._eventSpansDecades(ev)) {
+        this._renderMultidecadeEvent(gArcs, ev, rc, color, evFs, g);
+        return;
+      }
+
       if (ev.endIndex > ev.startIndex) {
         gArcs.appendChild(el("path", {
-          d: arcPath(rc, Math.min(aS, aE), Math.max(aS, aE)), fill: "none", stroke: color,
+          d: uprightArcPath(rc, aS, aE), fill: "none", stroke: color,
           "stroke-width": Math.max(1, g.Ro * 0.0013), class: "range-line",
         }));
       }
@@ -364,24 +598,25 @@ export class RadialCalendar {
       ends.forEach((idx) => {
         const sg = el("g", { transform: `rotate(${this.aDeg(idx)})` });
         sg.appendChild(el("circle", { cx: rc, cy: 0, r: CFG.dotR, fill: color, class: "range-dot" }));
-        // If this end day also has single-day (holiday) text near the perimeter,
-        // push the event label inward (reading toward the centre) to avoid overlap.
-        const dayHasHoliday = this.model.days[idx] && this.model.days[idx].holidays.length > 0;
-        const t = el("text", {
-          x: dayHasHoliday ? (rc - CFG.dotR - 4) : (rc + CFG.dotR + 4), y: 0,
-          "font-size": evFs,
-          "dominant-baseline": "middle",
-          "text-anchor": dayHasHoliday ? "end" : "start",
-          class: "range-label",
-          fill: color,
-        });
-        t.textContent = ev.label;
-        sg.appendChild(t);
+        const role = ev.endIndex > ev.startIndex
+          ? (idx === ev.startIndex ? "start" : "end")
+          : "only";
+        const sideKey = `${ev.lane}:${ev.startIndex}:${ev.endIndex}:${role}`;
+        const inside = eventLabelSides.get(sideKey) === "inside";
+        this._renderRangeEventLabel(
+          sg, rc, inside, ev.label, color, evFs,
+        );
         gArcs.appendChild(sg);
       });
     });
 
+    // --- president terms (history only): inside track, drawn after events ---
+    if (this.isHistory && this.model.presidentTerms) {
+      this._renderPresidentTerms(gArcs, g, bandStep, evFs);
+    }
+
     // --- friend birthdays: grey label + present icon on the blue event ring ---
+    if (!this.isHistory) {
     const rcBirth = g.rangeOut - (BLUE_LANE + 0.5) * bandStep - Math.max(12, g.Ro * 0.014);
     const bdayFs = Math.max(7, g.Ro * 0.0085);
     const iconSize = Math.max(8, g.Ro * 0.009);
@@ -409,9 +644,12 @@ export class RadialCalendar {
       sg.appendChild(t);
       gArcs.appendChild(sg);
     });
+    }
 
-    // --- weekday letter + date numbers (outer edge) + holidays ---
-    const dateFs = Math.max(8, g.Ro * 0.0125);
+    // --- weekday letter + date numbers (outer edge) + holidays / year events ---
+    const dateFs = this.isHistory
+      ? Math.max(7, g.Ro * 0.0105)
+      : Math.max(8, g.Ro * 0.0125);
     const holFs = Math.max(6.5, g.Ro * 0.0092);
     const wdFs = Math.max(6, g.Ro * 0.0075);
 
@@ -425,18 +663,35 @@ export class RadialCalendar {
         class: isPast ? "day past" : "day",
       });
 
-      if (d.holidays.length) {
-        const ht = el("text", {
-          x: g.date - CFG.holidayGap, y: 0,
-          "font-size": holFs,
-          "dominant-baseline": "middle",
-          "text-anchor": "end",
-          class: "holiday" + (isBankHoliday ? " bank-holiday" : ""),
+      if (d.holidays.length || d.supermoon) {
+        const yearX = g.date + (this.isHistory ? 3 : 5);
+        const holX = yearX - g.headlineGap;
+        const labelGap = Math.max(8, holFs * 0.55);
+        let x = holX;
+        const items = this.isHistory
+          ? d.holidays.map((text) => ({ text, fs: holFs * 0.92, celestial: false }))
+          : perimeterLabelItems(d, holFs);
+        items.forEach((item, i) => {
+          const nested = i > 0;
+          const t = el("text", {
+            x, y: 0,
+            "font-size": item.fs,
+            "dominant-baseline": "middle",
+            "text-anchor": "end",
+            class: "holiday"
+              + (this.isHistory ? " history-event" : "")
+              + (item.celestial ? " celestial" : "")
+              + (item.supermoon ? " supermoon-label" : "")
+              + (nested && item.celestial ? " nested" : "")
+              + (isBankHoliday ? " bank-holiday" : ""),
+          });
+          t.textContent = item.text;
+          sg.appendChild(t);
+          x -= approxTextWidth(item.text, item.fs) + labelGap;
         });
-        ht.textContent = d.holidays.join("  ·  ");
-        sg.appendChild(ht);
       }
 
+      if (!this.isHistory) {
       const wd = el("text", {
         x: g.date - 2, y: 0,
         "font-size": wdFs,
@@ -447,13 +702,15 @@ export class RadialCalendar {
       });
       wd.textContent = d.dayLetter;
       sg.appendChild(wd);
+      }
 
       const dateText = el("text", {
-        x: g.date + 5, y: 0,
+        x: g.date + (this.isHistory ? 3 : 5), y: 0,
         "font-size": dateFs,
         "dominant-baseline": "middle",
         "text-anchor": "start",
         class: "date-num"
+          + (this.isHistory ? " history-year" : "")
           + (isToday ? " today" : isBankHoliday ? " bank-holiday" : isWeekend ? " weekend" : ""),
       });
       dateText.textContent = d.date;
@@ -494,6 +751,164 @@ export class RadialCalendar {
       label.appendChild(tp);
       group.appendChild(label);
     });
+  }
+
+  _renderDecades(group, g, radius) {
+    const half = this.degPerDay / 2;
+    const byDecade = new Map();
+    this.model.days.forEach((d) => {
+      if (!byDecade.has(d.monthIndex)) {
+        byDecade.set(d.monthIndex, { first: d.index, last: d.index, name: d.month });
+      } else {
+        byDecade.get(d.monthIndex).last = d.index;
+      }
+    });
+    let i = 0;
+    [...byDecade.entries()].sort((a, b) => a[0] - b[0]).forEach(([, m]) => {
+      const e0 = this.aDeg(m.first) - half;
+      const e1 = this.aDeg(m.last) + half;
+      const a0 = Math.min(e0, e1);
+      const a1 = Math.max(e0, e1);
+      const pid = `decade-arc-${i++}`;
+      group.appendChild(el("path", { id: pid, d: arcPath(radius, a0, a1), fill: "none" }));
+      const label = el("text", {
+        "font-size": Math.max(11, g.Ro * 0.022),
+        class: "month-name decade-name",
+      });
+      const tp = el("textPath", { href: `#${pid}`, startOffset: "50%", "text-anchor": "middle" });
+      tp.textContent = m.name;
+      label.appendChild(tp);
+      group.appendChild(label);
+    });
+  }
+
+  _renderPresidentTerms(group, g, bandStep, evFs) {
+    const rc = g.rangeIn + bandStep * CFG.historyPresidentLane;
+    const half = this.degPerDay / 2;
+    const terms = this.model.presidentTerms;
+
+    terms.forEach((term) => {
+      const a0 = this.aDeg(term.startIndex) - half;
+      const a1 = this.aDeg(term.endIndex) + half;
+      const color = partyColor(term.party);
+      group.appendChild(el("path", {
+        d: arcPath(rc, Math.min(a0, a1), Math.max(a0, a1)),
+        fill: "none",
+        stroke: color,
+        "stroke-width": Math.max(1.2, g.Ro * 0.0015),
+        class: "president-line",
+      }));
+    });
+
+    for (let i = 0; i < terms.length - 1; i++) {
+      const prev = terms[i];
+      const next = terms[i + 1];
+      let transitionAngle;
+      if (prev.endIndex === next.startIndex) {
+        transitionAngle = this.aDeg(next.startIndex);
+      } else if (prev.endIndex + 1 === next.startIndex) {
+        transitionAngle = this.aDeg(next.startIndex) - half;
+      } else {
+        continue;
+      }
+      this._renderPresidentTransition(
+        group, rc, transitionAngle, prev, next, evFs,
+        this.model.transitionOpponents?.get(`${next.name}:${next.startIndex}`),
+      );
+    }
+
+    if (this.model.incumbentElections) {
+      this.model.incumbentElections.forEach((election) => {
+        this._renderIncumbentReelection(
+          group, rc, this.aDeg(election.yearIndex) - half, election, evFs,
+        );
+      });
+    }
+  }
+
+  _renderIncumbentReelection(group, rc, angle, election, evFs) {
+    const sg = el("g", { transform: `rotate(${angle})` });
+    const gap = CFG.dotR + 4;
+    const fs = evFs * 0.9;
+    const incColor = partyColor(election.party);
+
+    sg.appendChild(el("circle", {
+      cx: rc, cy: 0, r: CFG.dotR,
+      fill: incColor,
+      class: "president-dot president-reelection-dot",
+    }));
+
+    const chLabel = el("text", {
+      x: rc - gap,
+      y: 0,
+      "font-size": fs,
+      "dominant-baseline": "middle",
+      "text-anchor": "end",
+      class: "president-label president-challenger",
+    });
+    chLabel.textContent = election.challengerDisplayName;
+    sg.appendChild(chLabel);
+
+    const incLabel = el("text", {
+      x: rc + gap,
+      y: 0,
+      "font-size": fs,
+      "dominant-baseline": "middle",
+      "text-anchor": "start",
+      class: "president-label",
+      fill: incColor,
+    });
+    incLabel.textContent = election.incumbentDisplayName;
+    sg.appendChild(incLabel);
+
+    group.appendChild(sg);
+  }
+
+  _renderPresidentTransition(group, rc, angle, outgoing, incoming, evFs, opponentTag) {
+    const sg = el("g", { transform: `rotate(${angle})` });
+    const gap = CFG.dotR + 4;
+    const fs = evFs * 0.9;
+    const outColor = partyColor(outgoing.party);
+    const inColor = partyColor(incoming.party);
+
+    sg.appendChild(el("circle", {
+      cx: rc, cy: 0, r: CFG.dotR,
+      fill: inColor,
+      stroke: outColor,
+      "stroke-width": 1.2,
+      class: "president-dot",
+    }));
+
+    const outLabel = el("text", {
+      x: rc - gap,
+      y: 0,
+      "font-size": fs,
+      "dominant-baseline": "middle",
+      "text-anchor": "end",
+      class: "president-label",
+      fill: outColor,
+    });
+    outLabel.textContent = outgoing.displayName;
+    sg.appendChild(outLabel);
+
+    const inLabel = el("text", {
+      x: rc + gap,
+      y: 0,
+      "font-size": fs,
+      "dominant-baseline": "middle",
+      "text-anchor": "start",
+      class: "president-label",
+      fill: inColor,
+    });
+    inLabel.appendChild(document.createTextNode(incoming.displayName));
+    if (opponentTag) {
+      const vs = el("tspan", { class: "president-challenger" });
+      vs.textContent = ` ${opponentTag}`;
+      inLabel.appendChild(vs);
+    }
+    sg.appendChild(inLabel);
+
+    group.appendChild(sg);
   }
 
   _applyTransform() {
