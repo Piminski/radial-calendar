@@ -832,7 +832,7 @@ export class RadialCalendar {
     if (this.model.incumbentElections) {
       this.model.incumbentElections.forEach((election) => {
         this._renderIncumbentReelection(
-          group, rc, this.aDeg(election.yearIndex) - half, election, evFs,
+          group, rc, this.aDeg(election.yearIndex) + half, election, evFs,
         );
       });
     }
