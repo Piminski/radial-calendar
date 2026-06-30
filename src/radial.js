@@ -103,7 +103,8 @@ const CFG = {
   // the circle center sits just off-screen to the left.
   outerXFrac: 0.92,
   centerYFrac: 0.5,
-  radiusFrac: 1.5,      // Ro = viewport height * radiusFrac
+  radiusFrac: 1.5,      // Ro = viewport height * radiusFrac (portrait / square)
+  landscapeRadiusFrac: 3.4, // zoom in when W > H for readability + peephole crop
   // Radii as multiples of Ro (inner -> outer):
   rMonthText: 0.6,      // month name curved inside the ring (behind)
   rRangeIn: 0.42,       // multi-day event tracks, distributed across the ring
@@ -366,7 +367,9 @@ export class RadialCalendar {
   // ---- geometry ----
   _geom() {
     const W = this.W, H = this.H;
-    const Ro = H * CFG.radiusFrac;
+    const landscape = W > H;
+    const radiusFrac = landscape ? CFG.landscapeRadiusFrac : CFG.radiusFrac;
+    const Ro = H * radiusFrac;
     const h = this.isHistory;
     return {
       W, H, Ro,

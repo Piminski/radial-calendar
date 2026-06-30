@@ -107,3 +107,8 @@ window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => cal?.resize(), 120);
 });
+
+window.addEventListener("orientationchange", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => cal?.resize(), 120);
+});
