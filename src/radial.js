@@ -946,10 +946,10 @@ export class RadialCalendar {
   _drawOverlay() {
     const g = this._geom();
     this.overlay.innerHTML = "";
-    // Fixed horizontal "now" reference line from the wheel out to the right edge.
+    // Fixed horizontal "now" reference line from the wheel center out to the right edge.
     const x2 = this.W + 40;
     const line = el("line", {
-      x1: g.cx + g.monthText, y1: g.cy, x2, y2: g.cy, class: "now-line",
+      x1: g.cx, y1: g.cy, x2, y2: g.cy, class: "now-line",
     });
     this.overlay.appendChild(line);
     const tick = el("circle", { cx: g.cx + g.date, cy: g.cy, r: 3.5, class: "now-dot" });
