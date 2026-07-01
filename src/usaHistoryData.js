@@ -269,6 +269,7 @@ export const MULTIYEAR_EVENTS = [
   { label: "Great Depression", start: 1929, end: 1939 },
   { label: "World War II", start: 1941, end: 1945 },
   { label: "Cold War", start: 1947, end: 1991 },
+  { label: "Dot-com bubble", start: 1995, end: 2000 },
   { label: "Korean War", start: 1950, end: 1953 },
   { label: "Civil Rights Movement", start: 1954, end: 1968 },
   { label: "Vietnam War", start: 1955, end: 1975 },
