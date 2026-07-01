@@ -815,6 +815,13 @@ export class RadialCalendar {
       }));
     });
 
+    const firstTerm = terms[0];
+    if (firstTerm) {
+      this._renderPresidentTermStart(
+        group, rc, this.aDeg(firstTerm.startIndex) - half, firstTerm, evFs,
+      );
+    }
+
     for (let i = 0; i < terms.length - 1; i++) {
       const prev = terms[i];
       const next = terms[i + 1];
@@ -898,6 +905,27 @@ export class RadialCalendar {
       rc + gap, 0, fs,
       { "text-anchor": "start", class: "president-label", fill: incColor },
       election.incumbentDisplayName,
+    ));
+
+    group.appendChild(sg);
+  }
+
+  _renderPresidentTermStart(group, rc, angle, president, evFs) {
+    const sg = el("g", { transform: `rotate(${angle})` });
+    const fs = evFs * 0.9;
+    const gap = this._presidentDotGap(fs, "", president.displayName);
+    const color = partyColor(president.party);
+
+    sg.appendChild(el("circle", {
+      cx: rc, cy: 0, r: CFG.dotR,
+      fill: color,
+      class: "president-dot",
+    }));
+
+    sg.appendChild(this._presidentText(
+      rc + gap, 0, fs,
+      { "text-anchor": "start", class: "president-label", fill: color },
+      president.displayName,
     ));
 
     group.appendChild(sg);

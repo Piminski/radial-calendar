@@ -20,7 +20,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1789 | Judiciary Act creates the federal court system |
 | 1790 | Residence Act establishes future national capital |
 | 1791 | Bill of Rights ratified |
-| 1792 | Coinage Act establishes the U.S. Mint and dollar system |
+| 1792 | Coinage Act creates the Mint and dollar system |
 | 1793 | Neutrality Proclamation |
 | 1794 | Whiskey Rebellion suppressed |
 | 1795 | Jay Treaty |
@@ -45,7 +45,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1814 | British burn Washington, D.C. |
 | 1815 | Battle of New Orleans |
 | 1816 | Second Bank of the United States chartered |
-| 1817 | Rush-Bagot Agreement demilitarizes Great Lakes border |
+| 1817 | Rush-Bagot demilitarizes Great Lakes border |
 | 1818 | Convention of 1818 on the U.S.–Canada border |
 | 1819 | Panic of 1819 |
 | 1820 | Missouri Compromise |
