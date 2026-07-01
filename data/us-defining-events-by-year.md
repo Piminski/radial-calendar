@@ -55,7 +55,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1824 | Disputed presidential election / “Corrupt Bargain” |
 | 1825 | Erie Canal opens |
 | 1826 | Jefferson and Adams die on July 4 |
-| 1827 | Freedom’s Journal, first Black-owned U.S. newspaper |
+| 1827 | Freedom’s Journal, first Black-owned newspaper |
 | 1828 | Tariff of Abominations |
 | 1829 | Jackson’s “Kitchen Cabinet” reshapes Washington |
 | 1830 | Indian Removal Act |
@@ -89,7 +89,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1858 | Lincoln-Douglas debates |
 | 1859 | John Brown’s raid on Harpers Ferry |
 | 1860 | South Carolina secedes from the Union |
-| 1861 | Confederacy formed at Montgomery, Alabama |
+| 1861 | Confederacy formed at Montgomery, AL |
 | 1862 | Homestead Act |
 | 1863 | Emancipation Proclamation |
 | 1864 | Sherman’s March to the Sea |
@@ -107,8 +107,8 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1876 | Disputed Hayes-Tilden election |
 | 1877 | Great Railroad Strike paralyzes the nation |
 | 1878 | Bland-Allison Act |
-| 1879 | Edison demonstrates practical incandescent light |
-| 1880 | U.S. reaches 50 million population in census era |
+| 1879 | Edison demonstrates incandescent light |
+| 1880 | U.S. reaches 50 million population |
 | 1881 | President Garfield assassinated |
 | 1882 | Chinese Exclusion Act |
 | 1883 | Pendleton Civil Service Act |
@@ -126,7 +126,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1895 | Atlanta Compromise speech |
 | 1896 | Plessy v. Ferguson |
 | 1897 | Klondike Gold Rush |
-| 1898 | Spanish-American War / U.S. overseas empire |
+| 1898 | Spanish-American War |
 | 1899 | Open Door Policy announced |
 | 1900 | Galveston hurricane |
 | 1901 | McKinley assassinated; Theodore Roosevelt becomes president |
@@ -199,7 +199,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1968 | MLK assassinated |
 | 1969 | Moon landing |
 | 1970 | EPA created |
-| 1971 | Pentagon Papers published |
+| 1971 | The Nixon Shock |
 | 1972 | Watergate break-in |
 | 1973 | Roe v. Wade |
 | 1974 | Nixon resigns |
@@ -228,7 +228,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 1997 | Balanced Budget Act |
 | 1998 | Clinton impeachment |
 | 1999 | Columbine massacre |
-| 2000 | Bush v. Gore |
+| 2000 | Bush v. Gore / Y2k |
 | 2001 | September 11 attacks |
 | 2002 | Homeland Security Act |
 | 2003 | Columbia shuttle disaster |
@@ -237,10 +237,10 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 2006 | Twitter launches |
 | 2007 | iPhone introduced |
 | 2008 | Financial crisis |
-| 2009 | American Recovery and Reinvestment Act |
+| 2009 | Bitcoin |
 | 2010 | Affordable Care Act |
 | 2011 | Osama bin Laden killed |
-| 2012 | Sandy Hook shooting |
+| 2012 | Sandy Hook / Hurricane Sandy |
 | 2013 | Snowden surveillance disclosures |
 | 2014 | Ferguson protests |
 | 2015 | Same-sex marriage legalized|
@@ -249,7 +249,7 @@ A subjective editor’s-cut timeline: one defining U.S. event per calendar year.
 | 2018 | Parkland shooting and March for Our Lives |
 | 2019 | First Trump impeachment |
 | 2020 | George Floyd |
-| 2021 | January 6, Afghanistan withdrawal |
+| 2021 | January 6 / Afghanistan withdrawal |
 | 2022 | Dobbs decision overturns Roe v. Wade |
 | 2023 | Trump criminally indicted |
 | 2024 | Trump elected to a second, non-consecutive term |
