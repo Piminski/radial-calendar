@@ -119,6 +119,9 @@ const CFG = {
   historyHeadlineGap: 8, // px between year number and headline (text-anchor end)
   historyPresidentLane: 6.0, // inside track: rangeIn + this * bandStep
   historyBandStepCap: 0.030, // tighter lane spacing than annual calendar
+  viewZoomMin: 0.75,
+  viewZoomMax: 2.5,
+  viewPanXFrac: 0.45, // max horizontal pan as a fraction of Ro
 };
 
 function el(name, attrs) {
@@ -194,6 +197,8 @@ export class RadialCalendar {
     this.onFocusChange = onFocusChange || (() => {});
     this.rot = 0;
     this.vel = 0; // deg/ms for momentum
+    this.viewZoom = 1;
+    this.viewPanX = 0;
     this.degPerDay = 360 / model.total;
     this.dir = 1; // winding direction: 1 = dates advance anticlockwise
     this._yearStart = Date.UTC(model.year, 0, 1, 12, 0, 0);
@@ -209,6 +214,37 @@ export class RadialCalendar {
   }
 
   get isHistory() { return this.model.kind === "history"; }
+
+  _baseRo() {
+    const landscape = this.W > this.H;
+    const radiusFrac = landscape ? CFG.landscapeRadiusFrac : CFG.radiusFrac;
+    return this.H * radiusFrac;
+  }
+
+  _clampPanX(panX, Ro) {
+    const limit = Ro * CFG.viewPanXFrac;
+    return Math.min(limit, Math.max(-limit, panX));
+  }
+
+  _setViewZoom(next) {
+    const clamped = Math.min(CFG.viewZoomMax, Math.max(CFG.viewZoomMin, next));
+    if (Math.abs(clamped - this.viewZoom) < 0.001) return;
+    this.viewZoom = clamped;
+    this.viewPanX = this._clampPanX(this.viewPanX, this._baseRo() * this.viewZoom);
+    this._render();
+    this._positionMoon();
+    this._applyTransform();
+  }
+
+  resetView(animate = true) {
+    cancelAnimationFrame(this._raf);
+    this.vel = 0;
+    this.viewZoom = 1;
+    this.viewPanX = 0;
+    this._render();
+    this._positionMoon();
+    this.goToToday(animate);
+  }
 
   // Angle (deg) of a day index, honouring the winding direction.
   aDeg(i) { return i * this.degPerDay * this.dir; }
@@ -367,13 +403,11 @@ export class RadialCalendar {
   // ---- geometry ----
   _geom() {
     const W = this.W, H = this.H;
-    const landscape = W > H;
-    const radiusFrac = landscape ? CFG.landscapeRadiusFrac : CFG.radiusFrac;
-    const Ro = H * radiusFrac;
+    const Ro = this._baseRo() * this.viewZoom;
     const h = this.isHistory;
     return {
       W, H, Ro,
-      cx: W * CFG.outerXFrac - Ro * CFG.rDate,
+      cx: W * CFG.outerXFrac - Ro * CFG.rDate + this.viewPanX,
       cy: H * CFG.centerYFrac,
       monthText: Ro * CFG.rMonthText,
       rangeIn: Ro * (h ? CFG.historyRangeIn : CFG.rRangeIn),
@@ -1043,8 +1077,31 @@ export class RadialCalendar {
   // ---- input ----
   _attachEvents() {
     const g0 = () => this._geom();
+    const pointers = new Map();
     let lastAngle = 0;
+    let lastPanX = 0;
     let lastT = 0;
+    let mode = "idle"; // idle | spin | pan | pinch
+    let pinchStart = null;
+    let lastTap = null;
+    let spinMoved = false;
+    let usedPinch = false;
+    const TAP_MAX_MS = 320;
+    const TAP_MAX_DIST = 32;
+
+    const pointerList = () => [...pointers.values()];
+
+    const pinchMetrics = () => {
+      const pts = pointerList();
+      if (pts.length < 2) return null;
+      const [a, b] = pts;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      return {
+        dist: Math.hypot(dx, dy) || 1,
+        midX: (a.x + b.x) / 2,
+      };
+    };
 
     const angleAt = (clientX, clientY) => {
       const rect = this.svg.getBoundingClientRect();
@@ -1054,21 +1111,114 @@ export class RadialCalendar {
       return (Math.atan2(y, x) * 180) / Math.PI;
     };
 
-    const onDown = (e) => {
-      this._dragging = true;
+    const beginPinch = () => {
+      const m = pinchMetrics();
+      if (!m) return;
+      mode = "pinch";
+      usedPinch = true;
+      this._dragging = false;
       cancelAnimationFrame(this._raf);
       this.vel = 0;
-      lastAngle = angleAt(e.clientX, e.clientY);
-      lastT = performance.now();
-      this.svg.setPointerCapture(e.pointerId);
+      pinchStart = {
+        dist: m.dist,
+        zoom: this.viewZoom,
+        panX: this.viewPanX,
+        midX: m.midX,
+      };
       this.svg.classList.add("grabbing");
     };
+
+    const applyPinch = () => {
+      if (!pinchStart) return;
+      const m = pinchMetrics();
+      if (!m) return;
+      const nextZoom = Math.min(
+        CFG.viewZoomMax,
+        Math.max(CFG.viewZoomMin, pinchStart.zoom * (m.dist / pinchStart.dist)),
+      );
+      const Ro = this._baseRo() * nextZoom;
+      const nextPanX = this._clampPanX(pinchStart.panX + (m.midX - pinchStart.midX), Ro);
+      const zoomChanged = Math.abs(nextZoom - this.viewZoom) > 0.001;
+      const panChanged = Math.abs(nextPanX - this.viewPanX) > 0.5;
+      this.viewZoom = nextZoom;
+      this.viewPanX = nextPanX;
+      if (!zoomChanged && !panChanged) return;
+      if (zoomChanged) {
+        this._render();
+        this._positionMoon();
+      }
+      this._applyTransform();
+    };
+
+    const maybeDoubleTap = (e) => {
+      if (usedPinch || spinMoved || e.pointerType === "mouse") return;
+      const now = performance.now();
+      const x = e.clientX;
+      const y = e.clientY;
+      if (
+        lastTap
+        && now - lastTap.t < TAP_MAX_MS
+        && Math.hypot(x - lastTap.x, y - lastTap.y) < TAP_MAX_DIST
+      ) {
+        lastTap = null;
+        this.resetView(true);
+        return;
+      }
+      lastTap = { t: now, x, y };
+    };
+
+    const onDown = (e) => {
+      if (e.button !== 0 && e.button !== 1) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size >= 2) {
+        try { this.svg.setPointerCapture(e.pointerId); } catch {}
+        beginPinch();
+        return;
+      }
+
+      cancelAnimationFrame(this._raf);
+      this.vel = 0;
+      spinMoved = false;
+      usedPinch = false;
+      mode = (e.shiftKey || e.button === 1) ? "pan" : "spin";
+      if (mode === "pan") {
+        this._dragging = false;
+        lastPanX = e.clientX;
+      } else {
+        this._dragging = true;
+        lastAngle = angleAt(e.clientX, e.clientY);
+      }
+      lastT = performance.now();
+      try { this.svg.setPointerCapture(e.pointerId); } catch {}
+      this.svg.classList.add("grabbing");
+    };
+
     const onMove = (e) => {
-      if (!this._dragging) return;
+      if (pointers.has(e.pointerId)) {
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+
+      if (pointers.size >= 2) {
+        if (mode !== "pinch") beginPinch();
+        applyPinch();
+        return;
+      }
+
+      if (mode === "pan") {
+        const dx = e.clientX - lastPanX;
+        lastPanX = e.clientX;
+        this.viewPanX = this._clampPanX(this.viewPanX + dx, g0().Ro);
+        this._applyTransform();
+        return;
+      }
+
+      if (!this._dragging || mode !== "spin") return;
       const a = angleAt(e.clientX, e.clientY);
       let delta = a - lastAngle;
       if (delta > 180) delta -= 360;
       if (delta < -180) delta += 360;
+      if (Math.abs(delta) > 0.05) spinMoved = true;
       const now = performance.now();
       const dt = Math.max(1, now - lastT);
       this.vel = delta / dt;
@@ -1077,22 +1227,67 @@ export class RadialCalendar {
       lastT = now;
       this._applyTransform();
     };
+
     const onUp = (e) => {
-      if (!this._dragging) return;
-      this._dragging = false;
-      this.svg.classList.remove("grabbing");
+      const wasPan = mode === "pan";
+      const wasSpin = this._dragging && mode === "spin";
+      const wasPinch = mode === "pinch";
+      pointers.delete(e.pointerId);
       try { this.svg.releasePointerCapture(e.pointerId); } catch {}
-      this._momentum();
+
+      if (pointers.size >= 2) {
+        pinchStart = null;
+        beginPinch();
+        return;
+      }
+
+      if (pointers.size === 1 && wasPinch) {
+        mode = "idle";
+        pinchStart = null;
+        this._dragging = false;
+        this.svg.classList.remove("grabbing");
+        return;
+      }
+
+      if (pointers.size === 0) {
+        this.svg.classList.remove("grabbing");
+        mode = "idle";
+        pinchStart = null;
+        if (wasSpin && spinMoved) {
+          this._dragging = false;
+          this._momentum();
+        } else {
+          this._dragging = false;
+          if (wasPan || wasPinch) cancelAnimationFrame(this._raf);
+          else maybeDoubleTap(e);
+        }
+        return;
+      }
+
+      this._dragging = false;
+      mode = "idle";
+      this.svg.classList.remove("grabbing");
     };
 
     this.svg.addEventListener("pointerdown", onDown);
-    this.svg.addEventListener("pointermove", onMove);
-    this.svg.addEventListener("pointerup", onUp);
-    this.svg.addEventListener("pointercancel", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+
+    this.svg.addEventListener("dblclick", (e) => {
+      if (e.pointerType === "touch") return;
+      e.preventDefault();
+      this.resetView(true);
+    });
 
     this.svg.addEventListener("wheel", (e) => {
       e.preventDefault();
       cancelAnimationFrame(this._raf);
+      if (e.ctrlKey || e.metaKey) {
+        const d = (Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX);
+        this._setViewZoom(this.viewZoom * (1 - d * 0.002));
+        return;
+      }
       const d = (Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX);
       this.rot += d * 0.12;
       this._applyTransform();
