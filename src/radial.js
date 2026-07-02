@@ -122,6 +122,10 @@ const CFG = {
   viewZoomMin: 0.75,
   viewZoomMax: 2.5,
   viewPanXFrac: 0.45, // max horizontal pan as a fraction of Ro
+  spinFriction: 0.987, // per 16ms frame; higher = longer coast (roulette feel)
+  spinStopVel: 0.00055, // deg/ms — start settling below this speed
+  spinVelBlend: 0.32, // velocity smoothing while dragging (0–1)
+  spinSettleMaxMs: 1100,
 };
 
 function el(name, attrs) {
@@ -1074,6 +1078,25 @@ export class RadialCalendar {
     this._raf = requestAnimationFrame(tick);
   }
 
+  _settleToFocus() {
+    cancelAnimationFrame(this._raf);
+    const idx = Math.round(-this.rot / (this.degPerDay * this.dir));
+    const wrapped = ((idx % this.model.total) + this.model.total) % this.model.total;
+    const target = this._nearestRot(this._baseRotForIndex(wrapped));
+    const start = this.rot;
+    const dur = Math.min(CFG.spinSettleMaxMs, 380 + Math.abs(target - start) * 2.8);
+    const t0 = performance.now();
+    const ease = (t) => 1 - Math.pow(1 - t, 4);
+    const tick = (now) => {
+      const t = Math.min(1, (now - t0) / dur);
+      this.rot = start + (target - start) * ease(t);
+      this._applyTransform();
+      if (t < 1) this._raf = requestAnimationFrame(tick);
+      else this.vel = 0;
+    };
+    this._raf = requestAnimationFrame(tick);
+  }
+
   // ---- input ----
   _attachEvents() {
     const g0 = () => this._geom();
@@ -1085,6 +1108,7 @@ export class RadialCalendar {
     let pinchStart = null;
     let lastTap = null;
     let spinMoved = false;
+    let spinVelInit = true;
     let usedPinch = false;
     const TAP_MAX_MS = 320;
     const TAP_MAX_DIST = 32;
@@ -1180,6 +1204,7 @@ export class RadialCalendar {
       cancelAnimationFrame(this._raf);
       this.vel = 0;
       spinMoved = false;
+      spinVelInit = true;
       usedPinch = false;
       mode = (e.shiftKey || e.button === 1) ? "pan" : "spin";
       if (mode === "pan") {
@@ -1221,7 +1246,13 @@ export class RadialCalendar {
       if (Math.abs(delta) > 0.05) spinMoved = true;
       const now = performance.now();
       const dt = Math.max(1, now - lastT);
-      this.vel = delta / dt;
+      const instantVel = delta / dt;
+      if (spinVelInit) {
+        this.vel = instantVel;
+        spinVelInit = false;
+      } else {
+        this.vel = this.vel * (1 - CFG.spinVelBlend) + instantVel * CFG.spinVelBlend;
+      }
       this.rot += delta;
       lastAngle = a;
       lastT = now;
@@ -1289,10 +1320,11 @@ export class RadialCalendar {
         return;
       }
       const d = (Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX);
-      this.rot += d * 0.12;
+      this.vel = d * 0.0042;
+      this.rot += d * 0.14;
       this._applyTransform();
       clearTimeout(this._wheelSnap);
-      this._wheelSnap = setTimeout(() => this.goToIndex(this.focusIndex()), 140);
+      this._wheelSnap = setTimeout(() => this._momentum(), 90);
     }, { passive: false });
 
     window.addEventListener("keydown", (e) => {
@@ -1304,16 +1336,23 @@ export class RadialCalendar {
 
   _momentum() {
     cancelAnimationFrame(this._raf);
-    let v = this.vel; // deg/ms
-    if (Math.abs(v) < 0.002) { this.goToIndex(this.focusIndex()); return; }
+    let v = this.vel;
+    if (Math.abs(v) < CFG.spinStopVel * 0.45) {
+      this._settleToFocus();
+      return;
+    }
     let last = performance.now();
     const tick = (now) => {
       const dt = now - last; last = now;
       this.rot += v * dt;
-      v *= Math.pow(0.93, dt / 16);
+      v *= Math.pow(CFG.spinFriction, dt / 16);
       this._applyTransform();
-      if (Math.abs(v) > 0.003) this._raf = requestAnimationFrame(tick);
-      else this.goToIndex(this.focusIndex());
+      if (Math.abs(v) > CFG.spinStopVel) {
+        this._raf = requestAnimationFrame(tick);
+      } else {
+        this.vel = 0;
+        this._settleToFocus();
+      }
     };
     this._raf = requestAnimationFrame(tick);
   }
