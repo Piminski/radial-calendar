@@ -2,6 +2,7 @@
 
 import { FRIEND_BIRTHDAYS } from "./birthdays.js";
 import { supermoonsForYear, supermoonEventLabel } from "./supermoons.js";
+import { buildYearFromTemplate, isUsBankHoliday } from "./calendarYears.js";
 
 const MONTHS = [
   "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
@@ -10,24 +11,10 @@ const MONTHS = [
 
 const TRACKS = ["A", "B", "C", "D", "E"];
 
-// US Federal Reserve bank holidays by monthIndex-date (2026).
-const US_BANK_HOLIDAYS = new Set([
-  "0-1",   // New Year's Day
-  "0-19",  // Martin Luther King Jr. Day
-  "1-16",  // Presidents' Day
-  "4-25",  // Memorial Day
-  "5-19",  // Juneteenth
-  "6-3",   // Independence Day (observed — Jul 4 falls on Saturday)
-  "6-4",   // Independence Day
-  "8-7",   // Labor Day
-  "9-12",  // Columbus Day
-  "10-11", // Veterans Day
-  "10-26", // Thanksgiving
-  "11-25", // Christmas Day
-]);
+// US Federal Reserve bank holidays — computed per year in calendarYears.js.
 
-function isUsBankHoliday(monthIndex, date) {
-  return US_BANK_HOLIDAYS.has(`${monthIndex}-${date}`);
+function bankHoliday(year, monthIndex, date) {
+  return isUsBankHoliday(year, monthIndex, date);
 }
 
 // Minimal RFC-4180-ish CSV parser (handles quoted fields with embedded commas/quotes).
@@ -105,7 +92,7 @@ export function buildModel(text, year = 2026) {
       dayLetter: (r[cDay] || "").trim(),
       isMonthStart: date === 1 || !prev || prev.monthIndex !== monthIndex,
       holidays: splitHolidays(r[cHoliday]),
-      isUsBankHoliday: isUsBankHoliday(monthIndex, date),
+      isUsBankHoliday: bankHoliday(year, monthIndex, date),
       _raw: r,
     });
   });
@@ -174,3 +161,137 @@ export function buildModel(text, year = 2026) {
 }
 
 export { MONTHS, TRACKS };
+
+function daysInYear(year) {
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  return leap ? 366 : 365;
+}
+
+function enrichYearDays(days, year) {
+  const birthdayByKey = new Map(
+    FRIEND_BIRTHDAYS.map((b) => [`${b.monthIndex}-${b.date}`, b.name]),
+  );
+  days.forEach((d) => {
+    d.birthday = birthdayByKey.get(`${d.monthIndex}-${d.date}`) || null;
+  });
+  supermoonsForYear(year).forEach(({ name, monthIndex, date }) => {
+    const d = days.find((x) => x.monthIndex === monthIndex && x.date === date);
+    if (!d) return;
+    d.supermoon = supermoonEventLabel(name);
+  });
+  return days;
+}
+
+/** Programmatic day list for years without a CSV. */
+export function buildYearSkeleton(year) {
+  const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+  const monthLengths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (daysInYear(year) === 366) monthLengths[1] = 29;
+
+  let dow = new Date(Date.UTC(year, 0, 1)).getUTCDay();
+  const days = [];
+  for (let monthIndex = 0; monthIndex < 12; monthIndex++) {
+    for (let date = 1; date <= monthLengths[monthIndex]; date++) {
+      const prev = days[days.length - 1];
+      days.push({
+        index: days.length,
+        month: MONTHS[monthIndex],
+        monthIndex,
+        date,
+        dayLetter: DAY_LETTERS[dow],
+        isMonthStart: date === 1 || !prev || prev.monthIndex !== monthIndex,
+        holidays: [],
+        isUsBankHoliday: bankHoliday(year, monthIndex, date),
+      });
+      dow = (dow + 1) % 7;
+    }
+  }
+  enrichYearDays(days, year);
+  return {
+    kind: "annual",
+    year,
+    days,
+    total: days.length,
+    events: [],
+    trackCount: TRACKS.length,
+    monthStarts: days.filter((d) => d.isMonthStart).map((d) => d.index),
+  };
+}
+
+/**
+ * Continuous multi-year timeline: each year occupies 360° sequentially (unwrapped).
+ * Only the peephole window is rendered so years never stack on the same arc.
+ */
+export function buildSpiralModel(csvByYear, years, templateCsv) {
+  const yearModels = {};
+  const allDays = [];
+  const allEvents = [];
+  const yearStartIndex = {};
+  const daysPerYear = {};
+  let offset = 0;
+
+  years.forEach((year, yearSlot) => {
+    yearStartIndex[year] = offset;
+    const csv = csvByYear[year];
+    let yearModel;
+    if (csv) {
+      yearModel = buildModel(csv, year);
+    } else if (templateCsv) {
+      yearModel = buildYearFromTemplate(templateCsv, year);
+    } else {
+      yearModel = buildYearSkeleton(year);
+    }
+    yearModels[year] = yearModel;
+    const yearDays = yearModel.days;
+    const dpy = yearDays.length;
+    daysPerYear[year] = dpy;
+    const degPerDayY = 360 / dpy;
+
+    yearDays.forEach((d, indexInYear) => {
+      allDays.push({
+        ...d,
+        index: offset + indexInYear,
+        year,
+        yearSlot,
+        indexInYear,
+        angleDeg: yearSlot * 360 + indexInYear * degPerDayY,
+        isYearStart: indexInYear === 0,
+      });
+    });
+
+    yearModel.events.forEach((ev) => {
+      allEvents.push({
+        ...ev,
+        startIndex: ev.startIndex + offset,
+        endIndex: ev.endIndex + offset,
+        year,
+      });
+    });
+
+    offset += dpy;
+  });
+
+  const now = new Date().getFullYear();
+  const defaultYear = years.includes(now)
+    ? now
+    : years.includes(2026)
+      ? 2026
+      : years[Math.floor(years.length / 2)];
+
+  return {
+    kind: "spiral",
+    years,
+    yearModels,
+    startYear: years[0],
+    endYear: years[years.length - 1],
+    defaultYear,
+    year: defaultYear,
+    days: allDays,
+    total: allDays.length,
+    events: allEvents,
+    yearStartIndex,
+    daysPerYear,
+    trackCount: TRACKS.length,
+    monthStarts: allDays.filter((d) => d.isMonthStart).map((d) => d.index),
+  };
+}

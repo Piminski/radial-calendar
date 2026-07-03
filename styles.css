@@ -160,6 +160,13 @@ html, body {
 .moon-lit { fill: #f4f6f8; }
 .moon-ring { fill: none; stroke: #5b6b82; stroke-width: 1; opacity: 0.7; }
 
+.focus-year {
+  fill: var(--ink);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  pointer-events: none;
+}
+
 /* zodiac (sun sign) indicator next to the moon */
 .zodiac-ring { fill: #2b313b; stroke: #5b6b82; stroke-width: 1; }
 .zodiac-icon {

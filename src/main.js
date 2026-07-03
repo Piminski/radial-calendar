@@ -1,4 +1,4 @@
-import { buildModel } from "./parse.js";
+import { buildSpiralModel } from "./parse.js";
 import { buildHistoryModel } from "./history.js";
 import { parseYearEventsMarkdown } from "./parseYearEvents.js";
 import { RadialCalendar } from "./radial.js";
@@ -14,10 +14,14 @@ let historyModel = null;
 let resizeTimer;
 let activeCalendar = "history";
 
-function setTitle(kind) {
+const SPIRAL_YEARS = [2025, 2026, 2027];
+
+function setTitle(kind, model) {
   document.title = kind === "history"
     ? "Radial Calendar — USA History"
-    : "Radial Calendar 2026";
+    : kind === "spiral"
+      ? `Radial Calendar ${model.startYear}–${model.endYear}`
+      : "Radial Calendar 2026";
 }
 
 function setActiveMenuItem(value) {
@@ -45,11 +49,11 @@ function toggleMenu() {
 function mount(model) {
   if (cal) cancelAnimationFrame(cal._raf);
   cal = new RadialCalendar(svg, model);
-  setTitle(model.kind);
+  setTitle(model.kind, model);
 }
 
-function initAnnual(text) {
-  annualModel = buildModel(text, 2026);
+function initAnnual(csv2026) {
+  annualModel = buildSpiralModel({ 2026: csv2026 }, SPIRAL_YEARS, csv2026);
 }
 
 function initHistory(eventsMd) {

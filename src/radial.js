@@ -129,6 +129,7 @@ const CFG = {
   spinSettleOmega: 0.015, // ms^-1 — final detent spring
   spinSettleDamping: 0.38, // < 1 gives a subtle spring wiggle
   spinSettleStopDeg: 0.002,
+  spiralVisibleHalf: 102, // peephole: render days within this many degrees of focus
 };
 
 function el(name, attrs) {
@@ -200,16 +201,12 @@ function perimeterLabelItems(day, holFs) {
 export class RadialCalendar {
   constructor(svg, model, { onFocusChange } = {}) {
     this.svg = svg;
-    this.model = model;
     this.onFocusChange = onFocusChange || (() => {});
     this.rot = 0;
     this.vel = 0; // deg/ms for momentum
     this.viewZoom = 1;
     this.viewPanX = 0;
-    this.degPerDay = 360 / model.total;
     this.dir = 1; // winding direction: 1 = dates advance anticlockwise
-    this._yearStart = Date.UTC(model.year, 0, 1, 12, 0, 0);
-    this.todayIndex = this._computeTodayIndex();
     this._raf = null;
     this._dragging = false;
     this._coasting = false;
@@ -219,14 +216,87 @@ export class RadialCalendar {
     this._coastTarget = null;
     this._coastPlan = null;
 
+    this.spiral = model.kind === "spiral" ? model : null;
+    this.model = model;
+    this.degPerDay = 360 / model.total;
+    this.dir = 1;
+    this._spiralRenderKey = null;
+    if (this.spiral) {
+      this._yearStart = Date.UTC(model.defaultYear, 0, 1, 12, 0, 0);
+    } else {
+      this._yearStart = Date.UTC(model.year, 0, 1, 12, 0, 0);
+    }
+    this.todayIndex = this._computeTodayIndex();
+
     this._assignLanes();
     this._buildStatic();
     this.resize();
-    this.goToIndex(this.todayIndex, false);
+    if (this.spiral) {
+      const start = this.model.yearStartIndex[this.model.defaultYear] ?? 0;
+      this.goToIndex(start, false);
+      if (this.todayIndex >= 0) this.goToIndex(this.todayIndex, false);
+    } else {
+      this.goToIndex(this.todayIndex, false);
+    }
     this._attachEvents();
   }
 
   get isHistory() { return this.model.kind === "history"; }
+
+  get isSpiral() { return !!this.spiral; }
+
+  _daysInYear(year) {
+    return this.model.daysPerYear?.[year] ?? this.model.total;
+  }
+
+  _degHalf(index) {
+    if (this.isSpiral) {
+      const day = this.model.days[index];
+      return (360 / this._daysInYear(day.year)) / 2;
+    }
+    return this.degPerDay / 2;
+  }
+
+  _spiralFocusAngle() {
+    return -this.rot / this.dir;
+  }
+
+  _spiralScreenAngle(index) {
+    return this.aDeg(index) + this.rot;
+  }
+
+  _spiralVisibleIndices() {
+    const half = CFG.spiralVisibleHalf;
+    const out = [];
+    for (let i = 0; i < this.model.total; i++) {
+      const sa = this._spiralScreenAngle(i);
+      if (Math.abs(sa) <= half + this._degHalf(i)) out.push(i);
+    }
+    return out;
+  }
+
+  _spiralNeedsRerender() {
+    const half = CFG.spiralVisibleHalf + 20;
+    const fa = this._spiralFocusAngle();
+    const key = `${Math.floor((fa - half) / 24)}:${Math.floor((fa + half) / 24)}`;
+    if (key === this._spiralRenderKey) return false;
+    this._spiralRenderKey = key;
+    return true;
+  }
+
+  _clampRotSpiral() {
+    if (!this.isSpiral) return;
+    const minRot = -this.aDeg(this.model.total - 1) - this._degHalf(this.model.total - 1);
+    const maxRot = this._degHalf(0);
+    this.rot = Math.min(maxRot, Math.max(minRot, this.rot));
+    if (this.rot <= minRot && this.vel < 0) this.vel = 0;
+    if (this.rot >= maxRot && this.vel > 0) this.vel = 0;
+  }
+
+  _focusDayForMoon() {
+    const idx = this.focusIndex();
+    return this.model.days[idx];
+  }
 
   _baseRo() {
     const landscape = this.W > this.H;
@@ -261,7 +331,10 @@ export class RadialCalendar {
   }
 
   // Angle (deg) of a day index, honouring the winding direction.
-  aDeg(i) { return i * this.degPerDay * this.dir; }
+  aDeg(i) {
+    if (this.isSpiral) return this.model.days[i].angleDeg * this.dir;
+    return i * this.degPerDay * this.dir;
+  }
 
   _eventSpansDecades(ev) {
     if (!this.isHistory) return false;
@@ -405,6 +478,16 @@ export class RadialCalendar {
       const found = this.model.days.find((x) => x.year === y);
       return found ? found.index : this.model.total - 1;
     }
+    if (this.isSpiral) {
+      const y = now.getFullYear();
+      const mi = now.getMonth();
+      const d = now.getDate();
+      const found = this.model.days.find(
+        (x) => x.year === y && x.monthIndex === mi && x.date === d,
+      );
+      if (found) return found.index;
+      return -1;
+    }
     if (now.getFullYear() === this.model.year) {
       const mi = now.getMonth();
       const d = now.getDate();
@@ -509,9 +592,17 @@ export class RadialCalendar {
     this.zodiac.appendChild(this.zIcon);
     this.svg.appendChild(this.zodiac);
 
+    this.focusYearLabel = el("text", {
+      class: "focus-year",
+      "text-anchor": "end",
+      "dominant-baseline": "middle",
+    });
+    this.svg.appendChild(this.focusYearLabel);
+
     if (this.isHistory) {
       this.moon.style.display = "none";
       this.zodiac.style.display = "none";
+      this.focusYearLabel.style.display = "none";
     }
   }
 
@@ -533,8 +624,28 @@ export class RadialCalendar {
     this.zIcon.setAttribute("transform", `translate(${-icon / 2} ${-icon / 2}) scale(${sc})`);
     this.zodiac.setAttribute("transform", `translate(${g.cx + rMoon - 2 * zR - 4} ${g.cy})`);
 
+    const zodiacX = g.cx + rMoon - 2 * zR - 4;
+    const yearFs = Math.max(7, g.Ro * 0.0085);
+    this.focusYearLabel.setAttribute("font-size", yearFs);
+    this.focusYearLabel.setAttribute("x", zodiacX - zR - 6);
+    this.focusYearLabel.setAttribute("y", g.cy);
+
     this._updateMoon();
     this._updateZodiac(this._lastDay);
+    this._updateFocusYear(this._lastDay || this.model.days[this.focusIndex()]);
+  }
+
+  _focusYear(day) {
+    if (!day) return this.model.year;
+    return day.year ?? this.model.year;
+  }
+
+  _updateFocusYear(day) {
+    if (this.isHistory || !this.focusYearLabel) return;
+    const year = this._focusYear(day);
+    if (year === this._focusYearShown) return;
+    this._focusYearShown = year;
+    this.focusYearLabel.textContent = String(year);
   }
 
   _updateZodiac(day) {
@@ -549,11 +660,24 @@ export class RadialCalendar {
 
   _updateMoon() {
     if (this.isHistory || !this.moonLit || !this._moonR) return;
-    const focusFloat = -this.rot / (this.degPerDay * this.dir);
-    const t = this._yearStart + focusFloat * 86400000;
+    let t;
+    let year = this.model.year;
+    if (this.isSpiral) {
+      const day = this._focusDayForMoon();
+      if (!day) return;
+      year = day.year;
+      const fa = this._spiralFocusAngle();
+      const degPerDayY = 360 / this._daysInYear(day.year);
+      const frac = Math.max(0, Math.min(1, (fa - day.angleDeg) / degPerDayY + 0.5));
+      const dayStart = Date.UTC(day.year, day.monthIndex, day.date, 12, 0, 0);
+      t = dayStart + (frac - 0.5) * 86400000;
+    } else {
+      const focusFloat = -this.rot / (this.degPerDay * this.dir);
+      t = this._yearStart + focusFloat * 86400000;
+    }
     const p = moonPhase(t);
     this.moonLit.setAttribute("d", moonLitPath(this._moonR, p));
-    const glow = supermoonStrength(t, p, this.model.year);
+    const glow = supermoonStrength(t, p, year);
     const R = this._moonR;
     if (glow > 0) {
       this.moonGlow.setAttribute("r", (R * (1.55 + glow * 1.15)).toFixed(2));
@@ -572,7 +696,6 @@ export class RadialCalendar {
     this.wheel.innerHTML = "";
     this._pathId = 0;
 
-    // Render order = z-order. The today segment + ticks sit at the very back.
     const gTicks = el("g", { class: "ticks" });
     const gMonths = el("g", { class: "months" });
     const gArcs = el("g", { class: "arcs" });
@@ -582,10 +705,13 @@ export class RadialCalendar {
     this.wheel.appendChild(gArcs);
     this.wheel.appendChild(gLabels);
 
-    const half = this.degPerDay / 2;
+    const visibleSet = this.isSpiral ? new Set(this._spiralVisibleIndices()) : null;
+    const showDay = (i) => !visibleSet || visibleSet.has(i);
 
-    // --- past background: a dark-grey wedge covering every day before today ---
-    if (this.todayIndex > 0) {
+    const halfAt = (idx) => this._degHalf(idx);
+    const half = this.isSpiral ? null : this.degPerDay / 2;
+
+    if (!this.isSpiral && this.todayIndex > 0) {
       const p0 = this.aDeg(-0.5);
       const p1 = this.aDeg(this.todayIndex - 0.5);
       gTicks.appendChild(el("path", {
@@ -594,20 +720,33 @@ export class RadialCalendar {
       }));
     }
 
-    // --- today highlight: a filled red wedge filling today's day slot ---
-    const tA = this.aDeg(this.todayIndex);
-    gTicks.appendChild(el("path", {
-      d: wedgePath(g.date, tA - half, tA + half),
-      class: "today-seg",
-    }));
+    if (this.isSpiral && this.todayIndex >= 0 && showDay(this.todayIndex)) {
+      const tA = this.aDeg(this.todayIndex);
+      const tHalf = halfAt(this.todayIndex);
+      gTicks.appendChild(el("path", {
+        d: wedgePath(g.date, tA - tHalf, tA + tHalf),
+        class: "today-seg",
+      }));
+    } else if (!this.isSpiral && this.todayIndex >= 0) {
+      const tA = this.aDeg(this.todayIndex);
+      gTicks.appendChild(el("path", {
+        d: wedgePath(g.date, tA - half, tA + half),
+        class: "today-seg",
+      }));
+    }
 
-    // --- ticks (at the back): drawn BETWEEN days, dividing the day slots ---
     this.model.days.forEach((d) => {
-      const deg = this.aDeg(d.index - 0.5); // boundary before this day
-      const framesToday = d.index === this.todayIndex || d.index === this.todayIndex + 1;
+      if (!showDay(d.index)) return;
+      const deg = this.isSpiral
+        ? this.aDeg(d.index) - halfAt(d.index)
+        : this.aDeg(d.index - 0.5);
+      const framesToday = this.todayIndex >= 0
+        && (d.index === this.todayIndex || d.index === this.todayIndex + 1);
       const isYearStart = this.isHistory
         ? d.isCenturyStart
-        : d.monthIndex === 0 && d.date === 1;
+        : this.isSpiral
+          ? d.isYearStart
+          : d.monthIndex === 0 && d.date === 1;
       gTicks.appendChild(el("line", {
         x1: 0, y1: 0, x2: g.date, y2: 0,
         transform: `rotate(${deg})`,
@@ -618,7 +757,6 @@ export class RadialCalendar {
       }));
     });
 
-    // History calendar seam: thick marker between last year (2026) and first (1776).
     if (this.isHistory) {
       const seamDeg = this.aDeg(this.model.total - 0.5);
       gTicks.appendChild(el("line", {
@@ -628,22 +766,27 @@ export class RadialCalendar {
       }));
     }
 
-    // Multi-day ring spacing (shared by events, the month band, and the moon).
-    // History packs lanes tighter; annual calendar uses a wider cap.
     const stepCap = this.isHistory ? g.Ro * CFG.historyBandStepCap : g.Ro * 0.048;
     const bandStep = Math.min((g.rangeOut - g.rangeIn) / this.laneCount, stepCap);
     this._bandStep = bandStep;
     const evFs = Math.max(7, g.Ro * 0.0085);
 
-    // --- decade/month names: faint, curved in the band between the rings ---
     if (this.isHistory) this._renderDecades(gMonths, g, g.rangeIn + bandStep * 0.35);
+    else if (this.isSpiral) this._renderMonths(gMonths, g, g.rangeOut - bandStep, visibleSet);
     else this._renderMonths(gMonths, g, g.rangeOut - bandStep);
 
-    // --- multi-day / multiyear events: thin line + a dot at each end, label starts at the dot.
-    //     Lane 0 hugs the perimeter; overlapping events stack inward. ---
     const eventLabelSides = this._buildEventLabelSides();
+    const visHalf = this.isSpiral ? CFG.spiralVisibleHalf : null;
 
     this.model.events.forEach((ev) => {
+      if (this.isSpiral) {
+        const aS = this._spiralScreenAngle(ev.startIndex);
+        const aE = this._spiralScreenAngle(ev.endIndex);
+        const lo = Math.min(aS, aE) - halfAt(ev.startIndex);
+        const hi = Math.max(aS, aE) + halfAt(ev.endIndex);
+        if (hi < -visHalf || lo > visHalf) return;
+      }
+
       const rc = g.rangeOut - (ev.lane + 0.5) * bandStep;
       const color = TRACK_COLORS[ev.lane % TRACK_COLORS.length];
       const aS = this.aDeg(ev.startIndex);
@@ -664,6 +807,7 @@ export class RadialCalendar {
       const ends = ev.endIndex > ev.startIndex
         ? [ev.startIndex, ev.endIndex] : [ev.startIndex];
       ends.forEach((idx) => {
+        if (this.isSpiral && !showDay(idx)) return;
         const sg = el("g", { transform: `rotate(${this.aDeg(idx)})` });
         sg.appendChild(el("circle", { cx: rc, cy: 0, r: CFG.dotR, fill: color, class: "range-dot" }));
         const role = ev.endIndex > ev.startIndex
@@ -678,19 +822,17 @@ export class RadialCalendar {
       });
     });
 
-    // --- president terms (history only): inside track, drawn after events ---
     if (this.isHistory && this.model.presidentTerms) {
       this._renderPresidentTerms(gArcs, g, bandStep, evFs);
     }
 
-    // --- friend birthdays: grey label + present icon on the blue event ring ---
     if (!this.isHistory) {
     const rcBirth = g.rangeOut - (BLUE_LANE + 0.5) * bandStep - Math.max(12, g.Ro * 0.014);
     const bdayFs = Math.max(7, g.Ro * 0.0085);
     const iconSize = Math.max(8, g.Ro * 0.009);
 
     this.model.days.forEach((d) => {
-      if (!d.birthday) return;
+      if (!d.birthday || !showDay(d.index)) return;
       const sg = el("g", { transform: `rotate(${this.aDeg(d.index)})` });
       const labelX = rcBirth - iconSize - 6;
       const iconG = el("g", { class: "birthday-icon" });
@@ -722,6 +864,7 @@ export class RadialCalendar {
     const wdFs = Math.max(6, g.Ro * 0.0075);
 
     this.model.days.forEach((d) => {
+      if (!showDay(d.index)) return;
       const isToday = d.index === this.todayIndex;
       const isWeekend = d.dayLetter === "S";
       const isBankHoliday = d.isUsBankHoliday;
@@ -781,7 +924,7 @@ export class RadialCalendar {
           + (this.isHistory ? " history-year" : "")
           + (isToday ? " today" : isBankHoliday ? " bank-holiday" : isWeekend ? " weekend" : ""),
       });
-      dateText.textContent = d.date;
+      dateText.textContent = (this.isSpiral && d.isYearStart) ? String(d.year) : d.date;
       sg.appendChild(dateText);
 
       if (isToday) {
@@ -795,18 +938,18 @@ export class RadialCalendar {
     });
   }
 
-  _renderMonths(group, g, radius) {
-    const half = this.degPerDay / 2;
+  _renderMonths(group, g, radius, visibleSet = null) {
     const byMonth = new Map();
     this.model.days.forEach((d) => {
-      if (!byMonth.has(d.monthIndex)) byMonth.set(d.monthIndex, { first: d.index, last: d.index, name: d.month });
-      else byMonth.get(d.monthIndex).last = d.index;
+      if (visibleSet && !visibleSet.has(d.index)) return;
+      const key = this.isSpiral ? `${d.year}-${d.monthIndex}` : d.monthIndex;
+      if (!byMonth.has(key)) byMonth.set(key, { first: d.index, last: d.index, name: d.month });
+      else byMonth.get(key).last = d.index;
     });
     let i = 0;
     byMonth.forEach((m) => {
-      // Always draw the label path with increasing screen angle so text stays upright.
-      const e0 = this.aDeg(m.first) - half;
-      const e1 = this.aDeg(m.last) + half;
+      const e0 = this.aDeg(m.first) - this._degHalf(m.first);
+      const e1 = this.aDeg(m.last) + this._degHalf(m.last);
       const a0 = Math.min(e0, e1), a1 = Math.max(e0, e1);
       const pid = `month-arc-${i++}`;
       group.appendChild(el("path", { id: pid, d: arcPath(radius, a0, a1), fill: "none" }));
@@ -1019,6 +1162,7 @@ export class RadialCalendar {
   _applyTransform() {
     const g = this._geom();
     this._spinGeom = g;
+    if (this.isSpiral && this._spiralNeedsRerender()) this._render();
     this.wheel.setAttribute("transform", `translate(${g.cx} ${g.cy}) rotate(${this.rot})`);
     this._positionOverlay(g);
     this._updateMoon();
@@ -1028,6 +1172,10 @@ export class RadialCalendar {
   _applySpinFrame() {
     if (!this._spinGeom) this._spinGeom = this._geom();
     const g = this._spinGeom;
+    if (this.isSpiral) {
+      this._clampRotSpiral();
+      if (this._spiralNeedsRerender()) this._render();
+    }
     this.wheel.setAttribute("transform", `translate(${g.cx} ${g.cy}) rotate(${this.rot})`);
     this._updateMoon();
     this._emitFocus();
@@ -1070,6 +1218,7 @@ export class RadialCalendar {
       } else if (this._coasting && !this._dragging) {
         this.vel *= Math.pow(CFG.spinFriction, dt / 16);
         this.rot += this.vel * dt;
+        if (this.isSpiral) this._clampRotSpiral();
         if (Math.abs(this.vel) < CFG.spinDetentVel) {
           this._beginSettle();
         }
@@ -1082,7 +1231,8 @@ export class RadialCalendar {
   }
 
   _finishCoast() {
-    if (this._coastPlan) this.rot = this._coastPlan.target;
+    if (this.isSpiral) this._clampRotSpiral();
+    if (this._coastPlan) this.rot = this._targetRotNear(this.rot);
     else if (this._coasting) this.rot = this._targetRotNear(this.rot);
     else if (this._coastTarget != null) this.rot = this._coastTarget;
     this.vel = 0;
@@ -1103,6 +1253,7 @@ export class RadialCalendar {
   }
 
   _beginSettle() {
+    if (this.isSpiral) this._clampRotSpiral();
     const target = this._targetRotNear(this.rot);
     this._coasting = false;
     this._coastTarget = target;
@@ -1110,16 +1261,43 @@ export class RadialCalendar {
   }
 
   _stepSettle(dt) {
-    const target = this._coastPlan.target;
+    if (this.isSpiral) this._clampRotSpiral();
+    const target = this.isSpiral ? this._targetRotNear(this.rot) : this._coastPlan.target;
     const omega = CFG.spinSettleOmega;
     const damping = 2 * CFG.spinSettleDamping * omega;
     const error = target - this.rot;
     const accel = error * omega * omega - this.vel * damping;
     this.vel += accel * dt;
     this.rot += this.vel * dt;
+    if (this.isSpiral) this._clampRotSpiral();
+  }
+
+  _spiralFocusIndex() {
+    const fa = this._spiralFocusAngle();
+    const days = this.model.days;
+    let lo = 0;
+    let hi = days.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (days[mid].angleDeg < fa) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) {
+      const d0 = Math.abs(days[lo - 1].angleDeg - fa);
+      const d1 = Math.abs(days[lo].angleDeg - fa);
+      if (d0 < d1) return lo - 1;
+    }
+    return lo;
   }
 
   _targetRotNear(rot) {
+    if (this.isSpiral) {
+      const saved = this.rot;
+      this.rot = rot;
+      const idx = this._spiralFocusIndex();
+      this.rot = saved;
+      return this._baseRotForIndex(idx);
+    }
     const idx = Math.round(-rot / (this.degPerDay * this.dir));
     const wrapped = ((idx % this.model.total) + this.model.total) % this.model.total;
     const targetBase = this._baseRotForIndex(wrapped);
@@ -1143,7 +1321,7 @@ export class RadialCalendar {
 
   // ---- focus reporting ----
   focusIndex() {
-    // Day i is focused when aDeg(i) + rot == 0  =>  i = -rot / (degPerDay * dir)
+    if (this.isSpiral) return this._spiralFocusIndex();
     const i = Math.round(-this.rot / (this.degPerDay * this.dir));
     return ((i % this.model.total) + this.model.total) % this.model.total;
   }
@@ -1154,6 +1332,7 @@ export class RadialCalendar {
     if (day && day !== this._lastDay) {
       this._lastDay = day;
       this._updateZodiac(day);
+      this._updateFocusYear(day);
       this.onFocusChange(day, idx === this.todayIndex);
     }
   }
@@ -1164,11 +1343,15 @@ export class RadialCalendar {
   }
 
   _nearestRot(targetBase) {
+    if (this.isSpiral) return targetBase;
     const k = Math.round((this.rot - targetBase) / 360);
     return targetBase + k * 360;
   }
 
   goToIndex(index, animate = true) {
+    if (this.isSpiral) {
+      index = Math.max(0, Math.min(this.model.total - 1, index));
+    }
     const target = this._nearestRot(this._baseRotForIndex(index));
     if (!animate) {
       this.rot = target;
@@ -1178,9 +1361,18 @@ export class RadialCalendar {
     this._animateTo(target);
   }
 
-  goToToday(animate = true) { this.goToIndex(this.todayIndex, animate); }
+  goToToday(animate = true) {
+    if (this.todayIndex >= 0) this.goToIndex(this.todayIndex, animate);
+  }
 
-  step(delta) { this.goToIndex(this.focusIndex() + delta, true); }
+  step(delta) {
+    if (!this.isSpiral) {
+      this.goToIndex(this.focusIndex() + delta, true);
+      return;
+    }
+    const next = Math.max(0, Math.min(this.model.total - 1, this.focusIndex() + delta));
+    this.goToIndex(next, true);
+  }
 
   _animateTo(target) {
     this._haltSpin();
@@ -1440,6 +1632,7 @@ export class RadialCalendar {
       const d = (Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX);
       this.vel = d * 0.0042;
       this.rot += d * 0.14;
+      if (this.isSpiral) this._clampRotSpiral();
       this._applyTransform();
       clearTimeout(this._wheelSnap);
       this._wheelSnap = setTimeout(() => this._beginCoast(), 90);
