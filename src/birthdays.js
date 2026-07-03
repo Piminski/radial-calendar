@@ -17,5 +17,5 @@ export const FRIEND_BIRTHDAYS = [
   { name: "Alessandro", monthIndex: 10, date: 5 },
   { name: "Pappa", monthIndex: 3, date: 26 },
   { name: "Joakim", monthIndex: 6, date: 21 },
-  { name: "Søren", monthIndex: 1, date: 3 },
+  { name: "Sören", monthIndex: 1, date: 3 },
 ];
