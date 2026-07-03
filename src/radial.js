@@ -122,10 +122,13 @@ const CFG = {
   viewZoomMin: 0.75,
   viewZoomMax: 2.5,
   viewPanXFrac: 0.45, // max horizontal pan as a fraction of Ro
-  spinFriction: 0.987, // per 16ms frame; higher = longer coast (roulette feel)
-  spinStopVel: 0.00055, // deg/ms — start settling below this speed
-  spinVelBlend: 0.32, // velocity smoothing while dragging (0–1)
-  spinSettleMaxMs: 1100,
+  spinVelBlend: 0.28, // velocity smoothing while dragging (0–1)
+  spinFriction: 0.992, // per ~16 ms frame — freewheel coast
+  spinDetentVel: 0.00028,
+  spinStopVel: 0.000018,
+  spinSettleOmega: 0.015, // ms^-1 — final detent spring
+  spinSettleDamping: 0.38, // < 1 gives a subtle spring wiggle
+  spinSettleStopDeg: 0.002,
 };
 
 function el(name, attrs) {
@@ -209,6 +212,12 @@ export class RadialCalendar {
     this.todayIndex = this._computeTodayIndex();
     this._raf = null;
     this._dragging = false;
+    this._coasting = false;
+    this._spinLoopRunning = false;
+    this._spinGeom = null;
+    this._spinLast = 0;
+    this._coastTarget = null;
+    this._coastPlan = null;
 
     this._assignLanes();
     this._buildStatic();
@@ -235,13 +244,14 @@ export class RadialCalendar {
     if (Math.abs(clamped - this.viewZoom) < 0.001) return;
     this.viewZoom = clamped;
     this.viewPanX = this._clampPanX(this.viewPanX, this._baseRo() * this.viewZoom);
+    this._spinGeom = null;
     this._render();
     this._positionMoon();
     this._applyTransform();
   }
 
   resetView(animate = true) {
-    cancelAnimationFrame(this._raf);
+    this._haltSpin();
     this.vel = 0;
     this.viewZoom = 1;
     this.viewPanX = 0;
@@ -426,6 +436,7 @@ export class RadialCalendar {
     this.W = rect.width || 1200;
     this.H = rect.height || 800;
     this.svg.setAttribute("viewBox", `0 0 ${this.W} ${this.H}`);
+    this._spinGeom = null;
     this._render();
     this._positionMoon();
     this._applyTransform();
@@ -465,6 +476,10 @@ export class RadialCalendar {
 
     // Fixed overlay (does not rotate): the blue "now" reference line.
     this.overlay = el("g", { class: "overlay" });
+    this.nowLine = el("line", { class: "now-line" });
+    this.nowDot = el("circle", { r: 3.5, class: "now-dot" });
+    this.overlay.appendChild(this.nowLine);
+    this.overlay.appendChild(this.nowDot);
     this.svg.appendChild(this.overlay);
 
     // Moon phase indicator (drawn procedurally so it animates smoothly as you spin).
@@ -1003,23 +1018,127 @@ export class RadialCalendar {
 
   _applyTransform() {
     const g = this._geom();
+    this._spinGeom = g;
     this.wheel.setAttribute("transform", `translate(${g.cx} ${g.cy}) rotate(${this.rot})`);
-    this._drawOverlay();
+    this._positionOverlay(g);
     this._updateMoon();
     this._emitFocus();
   }
 
-  _drawOverlay() {
-    const g = this._geom();
-    this.overlay.innerHTML = "";
-    // Fixed horizontal "now" reference line from the wheel center out to the right edge.
+  _applySpinFrame() {
+    if (!this._spinGeom) this._spinGeom = this._geom();
+    const g = this._spinGeom;
+    this.wheel.setAttribute("transform", `translate(${g.cx} ${g.cy}) rotate(${this.rot})`);
+    this._updateMoon();
+    this._emitFocus();
+  }
+
+  _haltSpin() {
+    cancelAnimationFrame(this._raf);
+    this._raf = null;
+    this._coasting = false;
+    this._spinLoopRunning = false;
+    this._coastTarget = null;
+    this._coastPlan = null;
+  }
+
+  _startSpinLoop() {
+    if (this._spinLoopRunning) return;
+    this._spinLoopRunning = true;
+    this._spinLast = performance.now();
+    if (!this._spinGeom) this._spinGeom = this._geom();
+
+    const tick = (now) => {
+      if (!this._dragging && !this._coasting && !this._coastPlan) {
+        this._spinLoopRunning = false;
+        this._raf = null;
+        return;
+      }
+
+      const dt = Math.min(32, Math.max(1, now - this._spinLast));
+      this._spinLast = now;
+
+      if (this._coastPlan && !this._dragging) {
+        this._stepSettle(dt);
+        if (
+          Math.abs(this._coastPlan.target - this.rot) < CFG.spinSettleStopDeg
+          && Math.abs(this.vel) < CFG.spinStopVel
+        ) {
+          this._finishCoast();
+          return;
+        }
+      } else if (this._coasting && !this._dragging) {
+        this.vel *= Math.pow(CFG.spinFriction, dt / 16);
+        this.rot += this.vel * dt;
+        if (Math.abs(this.vel) < CFG.spinDetentVel) {
+          this._beginSettle();
+        }
+      }
+
+      this._applySpinFrame();
+      this._raf = requestAnimationFrame(tick);
+    };
+    this._raf = requestAnimationFrame(tick);
+  }
+
+  _finishCoast() {
+    if (this._coastPlan) this.rot = this._coastPlan.target;
+    else if (this._coasting) this.rot = this._targetRotNear(this.rot);
+    else if (this._coastTarget != null) this.rot = this._coastTarget;
+    this.vel = 0;
+    this._coasting = false;
+    this._spinLoopRunning = false;
+    this._coastTarget = null;
+    this._coastPlan = null;
+    this._raf = null;
+    this._applyTransform();
+  }
+
+  _beginCoast() {
+    this._dragging = false;
+    this._coastPlan = null;
+    this._coastTarget = null;
+    this._coasting = true;
+    this._startSpinLoop();
+  }
+
+  _beginSettle() {
+    const target = this._targetRotNear(this.rot);
+    this._coasting = false;
+    this._coastTarget = target;
+    this._coastPlan = { target };
+  }
+
+  _stepSettle(dt) {
+    const target = this._coastPlan.target;
+    const omega = CFG.spinSettleOmega;
+    const damping = 2 * CFG.spinSettleDamping * omega;
+    const error = target - this.rot;
+    const accel = error * omega * omega - this.vel * damping;
+    this.vel += accel * dt;
+    this.rot += this.vel * dt;
+  }
+
+  _targetRotNear(rot) {
+    const idx = Math.round(-rot / (this.degPerDay * this.dir));
+    const wrapped = ((idx % this.model.total) + this.model.total) % this.model.total;
+    const targetBase = this._baseRotForIndex(wrapped);
+    const k = Math.round((rot - targetBase) / 360);
+    return targetBase + k * 360;
+  }
+
+  _positionOverlay(g = this._geom()) {
     const x2 = this.W + 40;
-    const line = el("line", {
-      x1: g.cx, y1: g.cy, x2, y2: g.cy, class: "now-line",
-    });
-    this.overlay.appendChild(line);
-    const tick = el("circle", { cx: g.cx + g.date, cy: g.cy, r: 3.5, class: "now-dot" });
-    this.overlay.appendChild(tick);
+    this.nowLine.setAttribute("x1", g.cx);
+    this.nowLine.setAttribute("y1", g.cy);
+    this.nowLine.setAttribute("x2", x2);
+    this.nowLine.setAttribute("y2", g.cy);
+    this.nowDot.setAttribute("cx", g.cx + g.date);
+    this.nowDot.setAttribute("cy", g.cy);
+  }
+
+  _drawOverlay() {
+    this._positionOverlay();
   }
 
   // ---- focus reporting ----
@@ -1064,7 +1183,7 @@ export class RadialCalendar {
   step(delta) { this.goToIndex(this.focusIndex() + delta, true); }
 
   _animateTo(target) {
-    cancelAnimationFrame(this._raf);
+    this._haltSpin();
     const start = this.rot;
     const dur = Math.min(900, 200 + Math.abs(target - start) * 1.4);
     const t0 = performance.now();
@@ -1074,25 +1193,6 @@ export class RadialCalendar {
       this.rot = start + (target - start) * ease(t);
       this._applyTransform();
       if (t < 1) this._raf = requestAnimationFrame(tick);
-    };
-    this._raf = requestAnimationFrame(tick);
-  }
-
-  _settleToFocus() {
-    cancelAnimationFrame(this._raf);
-    const idx = Math.round(-this.rot / (this.degPerDay * this.dir));
-    const wrapped = ((idx % this.model.total) + this.model.total) % this.model.total;
-    const target = this._nearestRot(this._baseRotForIndex(wrapped));
-    const start = this.rot;
-    const dur = Math.min(CFG.spinSettleMaxMs, 380 + Math.abs(target - start) * 2.8);
-    const t0 = performance.now();
-    const ease = (t) => 1 - Math.pow(1 - t, 4);
-    const tick = (now) => {
-      const t = Math.min(1, (now - t0) / dur);
-      this.rot = start + (target - start) * ease(t);
-      this._applyTransform();
-      if (t < 1) this._raf = requestAnimationFrame(tick);
-      else this.vel = 0;
     };
     this._raf = requestAnimationFrame(tick);
   }
@@ -1109,6 +1209,8 @@ export class RadialCalendar {
     let lastTap = null;
     let spinMoved = false;
     let spinVelInit = true;
+    let lastInstantVel = 0;
+    const velSamples = [];
     let usedPinch = false;
     const TAP_MAX_MS = 320;
     const TAP_MAX_DIST = 32;
@@ -1141,7 +1243,7 @@ export class RadialCalendar {
       mode = "pinch";
       usedPinch = true;
       this._dragging = false;
-      cancelAnimationFrame(this._raf);
+      this._haltSpin();
       this.vel = 0;
       pinchStart = {
         dist: m.dist,
@@ -1202,9 +1304,13 @@ export class RadialCalendar {
       }
 
       cancelAnimationFrame(this._raf);
+      this._raf = null;
+      this._coasting = false;
+      this._spinLoopRunning = false;
       this.vel = 0;
       spinMoved = false;
       spinVelInit = true;
+      velSamples.length = 0;
       usedPinch = false;
       mode = (e.shiftKey || e.button === 1) ? "pan" : "spin";
       if (mode === "pan") {
@@ -1213,6 +1319,7 @@ export class RadialCalendar {
       } else {
         this._dragging = true;
         lastAngle = angleAt(e.clientX, e.clientY);
+        this._startSpinLoop();
       }
       lastT = performance.now();
       try { this.svg.setPointerCapture(e.pointerId); } catch {}
@@ -1234,6 +1341,7 @@ export class RadialCalendar {
         const dx = e.clientX - lastPanX;
         lastPanX = e.clientX;
         this.viewPanX = this._clampPanX(this.viewPanX + dx, g0().Ro);
+        this._spinGeom = null;
         this._applyTransform();
         return;
       }
@@ -1247,6 +1355,9 @@ export class RadialCalendar {
       const now = performance.now();
       const dt = Math.max(1, now - lastT);
       const instantVel = delta / dt;
+      lastInstantVel = instantVel;
+      velSamples.push(instantVel);
+      if (velSamples.length > 4) velSamples.shift();
       if (spinVelInit) {
         this.vel = instantVel;
         spinVelInit = false;
@@ -1285,10 +1396,17 @@ export class RadialCalendar {
         mode = "idle";
         pinchStart = null;
         if (wasSpin && spinMoved) {
-          this._dragging = false;
-          this._momentum();
+          const n = velSamples.length;
+          if (n >= 2) {
+            this.vel = velSamples[n - 1] * 0.65 + velSamples[n - 2] * 0.35;
+          } else {
+            this.vel = lastInstantVel;
+          }
+          velSamples.length = 0;
+          this._beginCoast();
         } else {
           this._dragging = false;
+          this._haltSpin();
           if (wasPan || wasPinch) cancelAnimationFrame(this._raf);
           else maybeDoubleTap(e);
         }
@@ -1313,7 +1431,7 @@ export class RadialCalendar {
 
     this.svg.addEventListener("wheel", (e) => {
       e.preventDefault();
-      cancelAnimationFrame(this._raf);
+      this._haltSpin();
       if (e.ctrlKey || e.metaKey) {
         const d = (Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX);
         this._setViewZoom(this.viewZoom * (1 - d * 0.002));
@@ -1324,7 +1442,7 @@ export class RadialCalendar {
       this.rot += d * 0.14;
       this._applyTransform();
       clearTimeout(this._wheelSnap);
-      this._wheelSnap = setTimeout(() => this._momentum(), 90);
+      this._wheelSnap = setTimeout(() => this._beginCoast(), 90);
     }, { passive: false });
 
     window.addEventListener("keydown", (e) => {
@@ -1332,28 +1450,5 @@ export class RadialCalendar {
       else if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); this.step(-1); }
       else if (e.key === "Home" || e.key.toLowerCase() === "t") { e.preventDefault(); this.goToToday(); }
     });
-  }
-
-  _momentum() {
-    cancelAnimationFrame(this._raf);
-    let v = this.vel;
-    if (Math.abs(v) < CFG.spinStopVel * 0.45) {
-      this._settleToFocus();
-      return;
-    }
-    let last = performance.now();
-    const tick = (now) => {
-      const dt = now - last; last = now;
-      this.rot += v * dt;
-      v *= Math.pow(CFG.spinFriction, dt / 16);
-      this._applyTransform();
-      if (Math.abs(v) > CFG.spinStopVel) {
-        this._raf = requestAnimationFrame(tick);
-      } else {
-        this.vel = 0;
-        this._settleToFocus();
-      }
-    };
-    this._raf = requestAnimationFrame(tick);
   }
 }
