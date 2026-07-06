@@ -2,7 +2,13 @@
 
 import { FRIEND_BIRTHDAYS } from "./birthdays.js";
 import { supermoonsForYear, supermoonEventLabel } from "./supermoons.js";
-import { MONTHS, TRACKS, parseCSV, buildModel } from "./parse.js";
+import {
+  MONTHS,
+  TRACKS,
+  parseCSV,
+  stripHolidaysMatchingRangeEvents,
+  readRangeTrackCells,
+} from "./parse.js";
 
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -15,9 +21,41 @@ const EXACT_2026_ONLY = new Set([
   "Commonwealth Games",
   "G20 Miami summit",
   "Super Bowl LX",
+  "Harbin Ice Snow Festival",
 ]);
 
-const MOVEABLE_RANGE_LABELS = new Set(["Lent", "Passover", "Hanukkah", "Sukkot"]);
+const MOVEABLE_RANGE_LABELS = new Set([
+  "Lent", "Passover", "Hanukkah", "Sukkot", "Rosh HaShanah",
+]);
+
+/** Multiday events whose dates shift year to year (overrides in YEAR_RANGES). */
+const FLOATING_RANGE_LABELS = new Set([
+  ...MOVEABLE_RANGE_LABELS,
+  "Comic-Con",
+  "Coachella",
+  "SXSW",
+  "Cannes Film Festival",
+  "Burning Man",
+  "Venice Film Festival",
+  "Rio Carnival",
+  "The Governors Ball",
+]);
+
+/** Coachella — two long weekends per year (monthIndex 0-based). */
+const COACHELLA_BY_YEAR = {
+  2025: [
+    { from: [3, 11], to: [3, 13] },
+    { from: [3, 18], to: [3, 20] },
+  ],
+  2026: [
+    { from: [3, 10], to: [3, 12] },
+    { from: [3, 17], to: [3, 19] },
+  ],
+  2027: [
+    { from: [3, 9], to: [3, 11] },
+    { from: [3, 16], to: [3, 18] },
+  ],
+};
 
 const MOVEABLE_HOLIDAY_RE = [
   /lunar new year/i,
@@ -42,8 +80,11 @@ const MOVEABLE_HOLIDAY_RE = [
   /daylight saving/i,
   /^mlb opening day$/i,
   /^passover$/i,
+  /met gala/i,
+  /golden globes/i,
   /independence day \(observed\)/i,
   /^super bowl l[ivx]+$/i,
+  / marathon$/i,
 ];
 
 /** Floating + fixed US bank holidays for a given year. */
@@ -91,6 +132,20 @@ export function isUsBankHoliday(year, monthIndex, date) {
   return usBankHolidayDates(year).has(`${monthIndex}-${date}`);
 }
 
+/** Nth occurrence of `weekday` (0=Sun … 6=Sat) in a month. */
+export function nthWeekdayOfMonth(year, monthIndex, weekday, n) {
+  const d = new Date(Date.UTC(year, monthIndex, 1));
+  let count = 0;
+  while (d.getUTCMonth() === monthIndex) {
+    if (d.getUTCDay() === weekday) {
+      count++;
+      if (count === n) return d.getUTCDate();
+    }
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return 1;
+}
+
 function splitParts(cell) {
   if (!cell) return [];
   return cell.split("/").map((s) => s.trim()).filter(Boolean);
@@ -105,13 +160,6 @@ function is2026OnlyLabel(label) {
 
 function isMoveableHoliday(label) {
   return MOVEABLE_HOLIDAY_RE.some((re) => re.test(label.trim()));
-}
-
-function shouldSkipTemplateEvent(label) {
-  if (!label) return true;
-  if (is2026OnlyLabel(label)) return true;
-  if (MOVEABLE_RANGE_LABELS.has(label.trim())) return true;
-  return false;
 }
 
 function filterHolidayCell(cell) {
@@ -135,6 +183,7 @@ function findDay(days, monthIndex, date) {
 
 const YEAR_HOLIDAYS = {
   2025: [
+    [0, 5, "Golden Globes"],
     [0, 20, "Martin Luther King Day"],
     [0, 29, "Lunar New Year"],
     [1, 9, "Super Bowl LIX"],
@@ -143,7 +192,6 @@ const YEAR_HOLIDAYS = {
     [2, 5, "Ash Wednesday"],
     [2, 9, "Daylight Saving Begins"],
     [2, 27, "MLB Opening Day"],
-    [3, 12, "Passover"],
     [3, 18, "Good Friday"],
     [3, 20, "Easter Sunday"],
     [4, 26, "Memorial Day"],
@@ -151,17 +199,15 @@ const YEAR_HOLIDAYS = {
     [6, 4, "Independence Day"],
     [8, 1, "Labor Day"],
     [9, 13, "Columbus Day"],
-    [9, 22, "Rosh HaShanah"],
     [9, 25, "Mid-Autumn Festival"],
     [10, 2, "Yom Kippur"],
-    [10, 7, "Sukkot"],
     [10, 27, "Thanksgiving"],
     [10, 28, "Black Friday"],
     [11, 1, "Daylight Saving Ends"],
-    [11, 14, "Hanukkah"],
     [11, 30, "Cyber Monday"],
   ],
   2027: [
+    [0, 10, "Golden Globes"],
     [0, 18, "Martin Luther King Day"],
     [0, 6, "Lunar New Year"],
     [1, 7, "Super Bowl LXI"],
@@ -172,7 +218,6 @@ const YEAR_HOLIDAYS = {
     [2, 26, "Good Friday"],
     [2, 28, "Easter Sunday"],
     [3, 1, "MLB Opening Day"],
-    [3, 21, "Passover"],
     [4, 31, "Memorial Day"],
     [5, 19, "Juneteenth"],
     [5, 25, "Dragon Boat Festival"],
@@ -180,31 +225,125 @@ const YEAR_HOLIDAYS = {
     [6, 5, "Independence Day (observed)"],
     [8, 6, "Labor Day"],
     [9, 11, "Columbus Day"],
-    [9, 11, "Rosh HaShanah"],
     [9, 20, "Yom Kippur"],
     [9, 25, "Mid-Autumn Festival"],
-    [9, 25, "Sukkot"],
     [10, 7, "Daylight Saving Ends"],
     [10, 25, "Thanksgiving"],
     [10, 26, "Black Friday"],
     [10, 29, "Cyber Monday"],
-    [11, 24, "Hanukkah"],
   ],
 };
 
+/** Same calendar dates every year (from the 2026 CSV), excluding floating / one-off events. */
+const FIXED_ANNUAL_RANGES = [
+  { track: "A", label: "Hanami (Cherry Blossoms)", from: [2, 20], to: [3, 5] },
+  { track: "A", label: "Bergkirchweih", from: [4, 21], to: [5, 1] },
+  { track: "A", label: "Nobel Prize Announcements", from: [9, 5], to: [9, 12] },
+  { track: "A", label: "Dia de los Muertos", from: [9, 31], to: [10, 2] },
+  { track: "B", label: "CES Las Vegas", from: [0, 6], to: [0, 9] },
+  { track: "B", label: "Sundance Film Festival", from: [0, 22], to: [1, 1] },
+  { track: "B", label: "Berlin Film Festival", from: [1, 12], to: [1, 22] },
+  { track: "B", label: "Frieze LA", from: [1, 26], to: [2, 1] },
+  { track: "B", label: "Songkran", from: [3, 13], to: [3, 15] },
+  { track: "B", label: "Golden Week", from: [3, 29], to: [4, 5] },
+  { track: "B", label: "French Open", from: [4, 24], to: [5, 7] },
+  { track: "B", label: "Royal Ascot", from: [5, 16], to: [5, 20] },
+  { track: "B", label: "Cannes Lions", from: [5, 22], to: [5, 26] },
+  { track: "B", label: "Wimbledon", from: [5, 29], to: [6, 12] },
+  { track: "B", label: "World Series", from: [9, 23], to: [9, 31] },
+  { track: "C", label: "Venice Carnival", from: [0, 31], to: [1, 17] },
+  { track: "C", label: "The Masters", from: [3, 9], to: [3, 12] },
+  { track: "C", label: "Art Basel", from: [5, 18], to: [5, 21] },
+  { track: "C", label: "Tour de France", from: [6, 4], to: [6, 26] },
+  { track: "C", label: "US Open", from: [7, 31], to: [8, 13] },
+  { track: "C", label: "Oktoberfest", from: [8, 19], to: [9, 4] },
+  { track: "D", label: "San Fermin", from: [6, 7], to: [6, 14] },
+  { track: "D", label: "Bayreuth Festival", from: [6, 25], to: [7, 26] },
+  { track: "A", label: "The Governors Ball", from: [5, 5], to: [5, 7] },
+  { track: "A", label: "Comic-Con", from: [6, 23], to: [6, 26] },
+  { track: "A", label: "Venice Film Festival", from: [8, 2], to: [8, 12] },
+  { track: "B", label: "Cannes Film Festival", from: [4, 12], to: [4, 23] },
+  { track: "B", label: "Burning Man", from: [7, 30], to: [8, 7] },
+  { track: "C", label: "SXSW", from: [2, 12], to: [2, 18] },
+  { track: "D", label: "Rio Carnival", from: [1, 13], to: [1, 18] },
+];
+
 const YEAR_RANGES = {
   2025: [
-    { track: "A", label: "Passover", from: [3, 12], to: [3, 20] },
-    { track: "A", label: "Expo 2025 Osaka", from: [3, 13], to: [9, 13] },
+    { track: "B", label: "Passover", from: [3, 12], to: [3, 19] },
     { track: "E", label: "Lent", from: [2, 5], to: [3, 19] },
+    { track: "D", label: "Sukkot", from: [9, 6], to: [9, 13] },
+    { track: "C", label: "SXSW", from: [2, 7], to: [2, 15] },
+    { track: "B", label: "Cannes Film Festival", from: [4, 13], to: [4, 24] },
+    { track: "D", label: "Rio Carnival", from: [1, 28], to: [2, 8] },
+    { track: "B", label: "Burning Man", from: [7, 24], to: [8, 1] },
+    { track: "A", label: "The Governors Ball", from: [5, 6], to: [5, 8] },
+    { track: "A", label: "Comic-Con", from: [6, 24], to: [6, 27] },
+    { track: "A", label: "Venice Film Festival", from: [7, 27], to: [8, 6] },
     { track: "A", label: "Hanukkah", from: [11, 14], to: [11, 22] },
-    { track: "E", label: "Sukkot", from: [10, 7], to: [10, 13] },
+    { track: "E", label: "Rosh HaShanah", from: [8, 22], to: [8, 24] },
   ],
   2027: [
-    { track: "A", label: "Passover", from: [3, 21], to: [3, 29] },
+    { track: "B", label: "Passover", from: [3, 21], to: [3, 29] },
     { track: "E", label: "Lent", from: [1, 17], to: [2, 27] },
+    { track: "E", label: "Rosh HaShanah", from: [9, 1], to: [9, 3] },
     { track: "A", label: "Hanukkah", from: [11, 24], to: [11, 31] },
-    { track: "E", label: "Sukkot", from: [9, 25], to: [10, 1] },
+    { track: "D", label: "Sukkot", from: [9, 15], to: [9, 22] },
+    { track: "C", label: "SXSW", from: [2, 13], to: [2, 21] },
+    { track: "B", label: "Cannes Film Festival", from: [4, 11], to: [4, 22] },
+    { track: "D", label: "Rio Carnival", from: [1, 12], to: [1, 17] },
+    { track: "A", label: "Comic-Con", from: [6, 22], to: [6, 25] },
+    { track: "B", label: "Burning Man", from: [7, 29], to: [8, 6] },
+    { track: "E", label: "Documenta 16", from: [5, 10], to: [8, 19] },
+  ],
+};
+
+function yearRangeLabels(year) {
+  const labels = new Set((YEAR_RANGES[year] || []).map((r) => r.label));
+  if (COACHELLA_BY_YEAR[year]) labels.add("Coachella");
+  return labels;
+}
+
+function coachellaRangesForYear(year) {
+  return (COACHELLA_BY_YEAR[year] || []).map(({ from, to }) => ({
+    track: "A",
+    label: "Coachella",
+    from,
+    to,
+  }));
+}
+
+/** Abbott World Marathon Majors — monthIndex (0-based), date, label. */
+const MARATHON_MAJORS_BY_YEAR = {
+  2025: [
+    [2, 2, "Tokyo Marathon"],
+    [3, 21, "Boston Marathon"],
+    [3, 27, "London Marathon"],
+    [4, 25, "Cape Town Marathon"],
+    [7, 31, "Sydney Marathon"],
+    [8, 28, "Berlin Marathon"],
+    [9, 12, "Chicago Marathon"],
+    [10, 2, "New York City Marathon"],
+  ],
+  2026: [
+    [2, 1, "Tokyo Marathon"],
+    [3, 20, "Boston Marathon"],
+    [3, 26, "London Marathon"],
+    [4, 24, "Cape Town Marathon"],
+    [7, 30, "Sydney Marathon"],
+    [8, 27, "Berlin Marathon"],
+    [9, 11, "Chicago Marathon"],
+    [10, 1, "New York City Marathon"],
+  ],
+  2027: [
+    [2, 7, "Tokyo Marathon"],
+    [3, 19, "Boston Marathon"],
+    [3, 25, "London Marathon"],
+    [4, 23, "Cape Town Marathon"],
+    [7, 29, "Sydney Marathon"],
+    [8, 26, "Berlin Marathon"],
+    [9, 10, "Chicago Marathon"],
+    [10, 7, "New York City Marathon"],
   ],
 };
 
@@ -220,55 +359,57 @@ function applyYearHolidays(days, year) {
   });
 }
 
-function applyYearRanges(days, year, header) {
-  const col = (name) => header.indexOf(name);
-
-  (YEAR_RANGES[year] || []).forEach(({ track, label, from, to }) => {
-    const ringCol = col(`RangeRing_${track}`);
-    const lineCol = col(`RangeLine_${track}`);
-    let mi = from[0];
-    let dt = from[1];
-    const [endMi, endDt] = to;
-
-    while (mi < endMi || (mi === endMi && dt <= endDt)) {
-      const d = findDay(days, mi, dt);
-      if (d) {
-        d._raw[lineCol] = "X";
-        if (mi === from[0] && dt === from[1]) d._raw[ringCol] = label;
-      }
-      if (mi === endMi && dt === endDt) break;
-      dt++;
-      const monthLen = new Date(Date.UTC(year, mi + 1, 0)).getUTCDate();
-      if (dt > monthLen) { dt = 1; mi++; }
-    }
-    const endDay = findDay(days, endMi, endDt);
-    if (endDay) endDay._raw[ringCol] = label;
+export function applyMarathonHolidays(days, year) {
+  (MARATHON_MAJORS_BY_YEAR[year] || []).forEach(([mi, dt, label]) => {
+    addHoliday(days, mi, dt, label);
   });
 }
 
-function copyTemplateEvent(days, templateDays, templateEvent, header) {
-  if (shouldSkipTemplateEvent(templateEvent.label)) return;
+export function applyMetGala(days, year) {
+  days.forEach((d) => {
+    d.holidays = d.holidays.filter((h) => !/met gala/i.test(h));
+  });
+  addHoliday(days, 4, nthWeekdayOfMonth(year, 4, 1, 1), "The Met Gala");
+}
 
+function paintRange(days, year, header, { track, label, from, to }) {
   const col = (name) => header.indexOf(name);
-  const track = templateEvent.track;
   const ringCol = col(`RangeRing_${track}`);
   const lineCol = col(`RangeLine_${track}`);
+  let mi = from[0];
+  let dt = from[1];
+  const [endMi, endDt] = to;
 
-  for (let i = templateEvent.startIndex; i <= templateEvent.endIndex; i++) {
-    const src = templateDays[i];
-    const dst = findDay(days, src.monthIndex, src.date);
-    if (!dst) continue;
-    dst._raw[lineCol] = "X";
-    if (i === templateEvent.startIndex) dst._raw[ringCol] = templateEvent.label;
-    if (i === templateEvent.endIndex && templateEvent.endIndex !== templateEvent.startIndex) {
-      dst._raw[ringCol] = templateEvent.label;
+  while (mi < endMi || (mi === endMi && dt <= endDt)) {
+    const d = findDay(days, mi, dt);
+    if (d) {
+      d._raw[lineCol] = "X";
+      d._raw[ringCol] = label;
     }
+    if (mi === endMi && dt === endDt) break;
+    dt++;
+    const monthLen = new Date(Date.UTC(year, mi + 1, 0)).getUTCDate();
+    if (dt > monthLen) { dt = 1; mi++; }
   }
-  if (templateEvent.startIndex === templateEvent.endIndex) {
-    const src = templateDays[templateEvent.startIndex];
-    const dst = findDay(days, src.monthIndex, src.date);
-    if (dst) dst._raw[ringCol] = templateEvent.label;
-  }
+}
+
+function applyRangeList(days, year, header, ranges) {
+  ranges.forEach((range) => paintRange(days, year, header, range));
+}
+
+function applyFixedAnnualRanges(days, year, header) {
+  const overrides = yearRangeLabels(year);
+  const ranges = FIXED_ANNUAL_RANGES.filter(({ label }) => {
+    if (MOVEABLE_RANGE_LABELS.has(label)) return false;
+    if (FLOATING_RANGE_LABELS.has(label) && overrides.has(label)) return false;
+    return true;
+  });
+  applyRangeList(days, year, header, ranges);
+}
+
+function applyYearRanges(days, year, header) {
+  const ranges = [...(YEAR_RANGES[year] || []), ...coachellaRangesForYear(year)];
+  applyRangeList(days, year, header, ranges);
 }
 
 function extractRangeEvents(days, header) {
@@ -288,8 +429,7 @@ function extractRangeEvents(days, header) {
     };
     days.forEach((d) => {
       const r = d._raw;
-      const ring = (r[ringCol] || "").trim();
-      const flagged = (r[lineCol] || "").trim().toUpperCase() === "X";
+      const { ring, flagged } = readRangeTrackCells(r, ringCol, lineCol);
       if (!flagged && !ring) { flush(); return; }
       if (ring && cur && cur.label && ring !== cur.label) {
         cur.endIndex = d.index - 1;
@@ -346,8 +486,6 @@ export function buildYearFromTemplate(templateCsv, year) {
     templateByKey.set(dayKey(monthIndex, date), r);
   });
 
-  const templateModel = buildModel(templateCsv, 2026);
-
   const monthLengths = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   if (daysInYear(year) === 366) monthLengths[1] = 29;
 
@@ -380,11 +518,10 @@ export function buildYearFromTemplate(templateCsv, year) {
     }
   }
 
-  templateModel.events.forEach((ev) => {
-    copyTemplateEvent(days, templateModel.days, ev, header);
-  });
-
+  applyFixedAnnualRanges(days, year, header);
   applyYearHolidays(days, year);
+  applyMarathonHolidays(days, year);
+  applyMetGala(days, year);
   applyYearRanges(days, year, header);
 
   days.forEach((d) => {
@@ -394,6 +531,7 @@ export function buildYearFromTemplate(templateCsv, year) {
   enrichDays(days, year);
 
   const events = extractRangeEvents(days, header);
+  stripHolidaysMatchingRangeEvents(days, events);
   days.forEach((d) => delete d._raw);
 
   return {

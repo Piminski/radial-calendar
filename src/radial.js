@@ -109,10 +109,12 @@ const CFG = {
   rMonthText: 0.6,      // month name curved inside the ring (behind)
   rRangeIn: 0.42,       // multi-day event tracks, distributed across the ring
   rRangeOut: 0.90,
-  rDate: 1.0,           // day numbers sit at the outermost edge
+  rDate: 1.05,          // day numbers, spokes, and shaded wedges (outer edge)
   // Pixel offsets:
-  holidayGap: 18,       // gap inside the date numbers where event text ends
+  holidayGap: 22,       // gap inside the date numbers where weekday + event text sit
   dotR: 3.0,
+  weekdayInset: 3,      // nudge weekday letters inward from the date-number gap center
+  singleDayRangeInset: 6, // gap from weekday letters (3px inset + 3px weekday shift)
   // USA history: rings sit inward of headline text (8px gap from year labels).
   historyRangeIn: 0.52,
   historyRangeOut: 0.84,
@@ -344,9 +346,10 @@ export class RadialCalendar {
     return Math.floor(y0 / 10) !== Math.floor(y1 / 10);
   }
 
-  _renderRangeEventLabel(sg, rc, inside, label, color, fs) {
+  _renderRangeEventLabel(sg, rc, inside, label, color, fs, dy = 0) {
+    const offset = CFG.dotR + 4;
     const t = el("text", {
-      x: inside ? (rc - CFG.dotR - 4) : (rc + CFG.dotR + 4), y: 0,
+      x: inside ? (rc - offset) : (rc + offset), y: dy,
       "font-size": fs,
       "dominant-baseline": "middle",
       "text-anchor": inside ? "end" : "start",
@@ -412,39 +415,86 @@ export class RadialCalendar {
     );
   }
 
-  // When several events start or end on the same year, alternate label side to reduce overlap.
-  _buildEventLabelSides() {
-    const byIndex = new Map();
-    const add = (idx, ev, role) => {
-      if (!byIndex.has(idx)) byIndex.set(idx, []);
-      byIndex.get(idx).push({ ev, role });
-    };
+  _eventLabelKey(ev, role) {
+    return `${ev.lane}:${ev.startIndex}:${ev.endIndex}:${role}`;
+  }
+
+  // Resolve inside/outside per spoke (all lanes). Apply tangential dy stagger only
+  // within the same lane — cross-lane stagger misaligns labels from their dots.
+  _buildEventLabelLayout(g, bandStep, evFs) {
+    const items = [];
     this.model.events.forEach((ev) => {
       if (ev.endIndex > ev.startIndex) {
-        add(ev.startIndex, ev, "start");
-        add(ev.endIndex, ev, "end");
+        items.push({ ev, role: "start", idx: ev.startIndex });
+        items.push({ ev, role: "end", idx: ev.endIndex });
       } else {
-        add(ev.startIndex, ev, "only");
+        items.push({ ev, role: "only", idx: ev.startIndex });
       }
     });
-    const sides = new Map();
+
+    const layouts = new Map();
+    const tangentialRange = (inside, widthDeg) => (
+      inside ? [-widthDeg, 0] : [0, widthDeg]
+    );
+    const rangesOverlap = (a, b) => a[0] < b[1] && b[0] < a[1];
+
+    const byIndex = new Map();
+    items.forEach((item) => {
+      if (!byIndex.has(item.idx)) byIndex.set(item.idx, []);
+      byIndex.get(item.idx).push(item);
+    });
+
     byIndex.forEach((list, idx) => {
-      list.sort((a, b) => a.ev.lane - b.ev.lane);
+      list.sort((a, b) => a.ev.lane - b.ev.lane || a.role.localeCompare(b.role));
       const hasHeadline = dayHasPerimeterLabel(this.model.days[idx]);
+
+      if (list.length === 1) {
+        const item = list[0];
+        layouts.set(this._eventLabelKey(item.ev, item.role), {
+          inside: hasHeadline,
+          dy: 0,
+        });
+        return;
+      }
+
+      const placed = [];
       list.forEach((item, i) => {
-        const key = `${item.ev.lane}:${item.ev.startIndex}:${item.ev.endIndex}:${item.role}`;
-        let side;
-        if (list.length > 1) {
-          side = i % 2 === 0 ? "inside" : "outside";
-        } else if (hasHeadline) {
-          side = "inside";
-        } else {
-          side = "outside";
-        }
-        sides.set(key, side);
+        const rc = g.rangeOut - (item.ev.lane + 0.5) * bandStep;
+        const widthDeg = this._labelArcHalfDeg(item.ev.label, evFs, rc) * 2;
+
+        const overlapsSide = (inside) => {
+          const range = tangentialRange(inside, widthDeg);
+          return placed.some((p) => rangesOverlap(range, p.range));
+        };
+
+        let inside = false;
+        if (overlapsSide(false)) inside = true;
+        if (overlapsSide(inside)) inside = i % 2 === 1;
+
+        placed.push({ range: tangentialRange(inside, widthDeg) });
+        layouts.set(this._eventLabelKey(item.ev, item.role), { inside, dy: 0 });
       });
     });
-    return sides;
+
+    const byLaneDay = new Map();
+    items.forEach((item) => {
+      const key = `${item.idx}:${item.ev.lane}`;
+      if (!byLaneDay.has(key)) byLaneDay.set(key, []);
+      byLaneDay.get(key).push(item);
+    });
+
+    byLaneDay.forEach((list) => {
+      if (list.length < 2) return;
+      list.sort((a, b) => a.role.localeCompare(b.role));
+      list.forEach((item, i) => {
+        const key = this._eventLabelKey(item.ev, item.role);
+        const layout = layouts.get(key) ?? { inside: false, dy: 0 };
+        layout.dy = (i - (list.length - 1) / 2) * evFs * 1.25;
+        layouts.set(key, layout);
+      });
+    });
+
+    return layouts;
   }
 
   // Interval packing: lane 0 is the perimeter. Shorter events are placed first so
@@ -775,7 +825,7 @@ export class RadialCalendar {
     else if (this.isSpiral) this._renderMonths(gMonths, g, g.rangeOut - bandStep, visibleSet);
     else this._renderMonths(gMonths, g, g.rangeOut - bandStep);
 
-    const eventLabelSides = this._buildEventLabelSides();
+    const eventLabelLayouts = this._buildEventLabelLayout(g, bandStep, evFs);
     const visHalf = this.isSpiral ? CFG.spiralVisibleHalf : null;
 
     this.model.events.forEach((ev) => {
@@ -808,15 +858,17 @@ export class RadialCalendar {
         ? [ev.startIndex, ev.endIndex] : [ev.startIndex];
       ends.forEach((idx) => {
         if (this.isSpiral && !showDay(idx)) return;
+        const isSingleDay = ev.endIndex === ev.startIndex;
+        const rcEvent = rc - (isSingleDay && !this.isHistory ? CFG.singleDayRangeInset : 0);
         const sg = el("g", { transform: `rotate(${this.aDeg(idx)})` });
-        sg.appendChild(el("circle", { cx: rc, cy: 0, r: CFG.dotR, fill: color, class: "range-dot" }));
+        sg.appendChild(el("circle", { cx: rcEvent, cy: 0, r: CFG.dotR, fill: color, class: "range-dot" }));
         const role = ev.endIndex > ev.startIndex
           ? (idx === ev.startIndex ? "start" : "end")
           : "only";
-        const sideKey = `${ev.lane}:${ev.startIndex}:${ev.endIndex}:${role}`;
-        const inside = eventLabelSides.get(sideKey) === "inside";
+        const layout = eventLabelLayouts.get(this._eventLabelKey(ev, role))
+          ?? { inside: false, dy: 0 };
         this._renderRangeEventLabel(
-          sg, rc, inside, ev.label, color, evFs,
+          sg, rcEvent, layout.inside, ev.label, color, evFs, layout.dy,
         );
         gArcs.appendChild(sg);
       });
@@ -903,11 +955,12 @@ export class RadialCalendar {
       }
 
       if (!this.isHistory) {
+      const dateX = g.date + 5;
       const wd = el("text", {
-        x: g.date - 2, y: 0,
+        x: dateX - g.headlineGap / 2 - CFG.weekdayInset, y: 0,
         "font-size": wdFs,
         "dominant-baseline": "middle",
-        "text-anchor": "end",
+        "text-anchor": "middle",
         class: "weekday"
           + (isBankHoliday ? " bank-holiday" : isWeekend ? " weekend" : ""),
       });

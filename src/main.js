@@ -1,4 +1,5 @@
-import { buildSpiralModel } from "./parse.js";
+import { buildSpiralModel, buildModel } from "./parse.js";
+import { buildYearFromTemplate } from "./calendarYears.js";
 import { buildHistoryModel } from "./history.js";
 import { parseYearEventsMarkdown } from "./parseYearEvents.js";
 import { RadialCalendar } from "./radial.js";
@@ -10,6 +11,7 @@ const menuDropdown = document.getElementById("calendar-menu-dropdown");
 const menuItems = [...menuDropdown.querySelectorAll(".calendar-menu-item")];
 let cal = null;
 let annualModel = null;
+let yearModels = {};
 let historyModel = null;
 let resizeTimer;
 let activeCalendar = "history";
@@ -17,11 +19,15 @@ let activeCalendar = "history";
 const SPIRAL_YEARS = [2025, 2026, 2027];
 
 function setTitle(kind, model) {
-  document.title = kind === "history"
-    ? "Radial Calendar — USA History"
-    : kind === "spiral"
-      ? `Radial Calendar ${model.startYear}–${model.endYear}`
-      : "Radial Calendar 2026";
+  if (kind === "history") {
+    document.title = "Radial Calendar — USA History";
+  } else if (kind === "spiral") {
+    document.title = "Radial Calendar — Annual";
+  } else if (kind === "annual" && model?.year) {
+    document.title = `Radial Calendar ${model.year}`;
+  } else {
+    document.title = "Radial Calendar";
+  }
 }
 
 function setActiveMenuItem(value) {
@@ -54,6 +60,11 @@ function mount(model) {
 
 function initAnnual(csv2026) {
   annualModel = buildSpiralModel({ 2026: csv2026 }, SPIRAL_YEARS, csv2026);
+  yearModels = {
+    2025: buildYearFromTemplate(csv2026, 2025),
+    2026: buildModel(csv2026, 2026),
+    2027: buildYearFromTemplate(csv2026, 2027),
+  };
 }
 
 function initHistory(eventsMd) {
@@ -66,8 +77,10 @@ function switchCalendar(value) {
   setActiveMenuItem(value);
   if (value === "history") {
     if (historyModel) mount(historyModel);
-  } else if (annualModel) {
-    mount(annualModel);
+  } else if (value === "annual") {
+    if (annualModel) mount(annualModel);
+  } else if (yearModels[value]) {
+    mount(yearModels[value]);
   }
 }
 

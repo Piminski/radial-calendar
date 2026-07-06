@@ -2,7 +2,7 @@
 
 import { FRIEND_BIRTHDAYS } from "./birthdays.js";
 import { supermoonsForYear, supermoonEventLabel } from "./supermoons.js";
-import { buildYearFromTemplate, isUsBankHoliday } from "./calendarYears.js";
+import { buildYearFromTemplate, isUsBankHoliday, applyMarathonHolidays, applyMetGala } from "./calendarYears.js";
 
 const MONTHS = [
   "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
@@ -56,6 +56,47 @@ function splitHolidays(cell) {
     .split("/")
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function normalizeEventLabel(label) {
+  return label.trim().toLowerCase();
+}
+
+/** RangeLine_* holds span markers; X sometimes lands in RangeRing_* by mistake. */
+function readRangeTrackCells(raw, ringCol, lineCol) {
+  let ring = (raw[ringCol] || "").trim();
+  let line = (raw[lineCol] || "").trim();
+  if (ring.toUpperCase() === "X") {
+    if (line.toUpperCase() !== "X") line = "X";
+    ring = "";
+  }
+  return { ring, flagged: line.toUpperCase() === "X" };
+}
+
+/** Drop perimeter labels when the same event already exists as a range track. */
+export function stripHolidaysMatchingRangeEvents(days, events) {
+  const multiDayLabels = new Set();
+  const singleDayRange = new Map();
+
+  events.forEach((ev) => {
+    if (!ev.label) return;
+    const key = normalizeEventLabel(ev.label);
+    if (ev.endIndex > ev.startIndex) {
+      multiDayLabels.add(key);
+    } else {
+      if (!singleDayRange.has(key)) singleDayRange.set(key, new Set());
+      singleDayRange.get(key).add(ev.startIndex);
+    }
+  });
+
+  days.forEach((d) => {
+    d.holidays = d.holidays.filter((h) => {
+      const key = normalizeEventLabel(h);
+      if (multiDayLabels.has(key)) return false;
+      if (singleDayRange.get(key)?.has(d.index)) return false;
+      return true;
+    });
+  });
 }
 
 /**
@@ -115,8 +156,7 @@ export function buildModel(text, year = 2026) {
     };
     days.forEach((d) => {
       const r = d._raw;
-      const ring = ((r[ringCol] || "").trim());
-      const flagged = ((r[lineCol] || "").trim().toUpperCase() === "X");
+      const { ring, flagged } = readRangeTrackCells(r, ringCol, lineCol);
       if (!flagged && !ring) { flush(); return; }
       if (ring && cur && cur.label && ring !== cur.label) {
         // Back-to-back events sharing a track: close previous on prior day.
@@ -146,6 +186,11 @@ export function buildModel(text, year = 2026) {
     d.supermoon = supermoonEventLabel(name);
   });
 
+  applyMarathonHolidays(days, year);
+  applyMetGala(days, year);
+
+  stripHolidaysMatchingRangeEvents(days, events);
+
   // Clean up _raw to keep the model tidy.
   days.forEach((d) => delete d._raw);
 
@@ -160,7 +205,7 @@ export function buildModel(text, year = 2026) {
   };
 }
 
-export { MONTHS, TRACKS };
+export { MONTHS, TRACKS, readRangeTrackCells };
 
 function daysInYear(year) {
   const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
