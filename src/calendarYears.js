@@ -22,6 +22,7 @@ const EXACT_2026_ONLY = new Set([
   "G20 Miami summit",
   "Super Bowl LX",
   "Harbin Ice Snow Festival",
+  "Midterm Elections",
 ]);
 
 const MOVEABLE_RANGE_LABELS = new Set([
